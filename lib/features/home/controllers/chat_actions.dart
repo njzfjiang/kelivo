@@ -364,7 +364,7 @@ class ChatActions {
       );
 
       // Execute generation
-      final ctx = messageGenerationService.buildGenerationContext(
+      final ctx = await messageGenerationService.buildGenerationContext(
         assistantMessage: assistantMessage,
         prepared: prepared,
         userImagePaths: userImagePaths,
@@ -529,7 +529,7 @@ class ChatActions {
     );
 
     // Execute generation
-    final ctx = messageGenerationService.buildGenerationContext(
+    final ctx = await messageGenerationService.buildGenerationContext(
       assistantMessage: assistantMessage,
       prepared: prepared,
       userImagePaths: userImagePaths,
@@ -580,6 +580,7 @@ class ChatActions {
       }
     }
     if (streaming != null) {
+      final latencyMs = streaming.durationMs;
       // Mark streaming as ended to allow UI rebuilds again
       streamController.markStreamingEnded(streaming.id);
 
@@ -622,6 +623,12 @@ class ChatActions {
         streaming.content,
         immediate: true,
       );
+      await messageGenerationService.analysisCaptureService.markCancelled(
+        turnId: streaming.id,
+        assistantText: streaming.content,
+        totalTokens: streaming.totalTokens,
+        latencyMs: latencyMs,
+      );
     } else {
       _setConversationLoading(cid, false);
     }
@@ -636,11 +643,18 @@ class ChatActions {
     final state = stream_ctrl.StreamingState(ctx);
     final assistant = ctx.assistant;
     final conversationId = state.conversationId;
+    state.requestStartedAt = DateTime.now();
+    final analysisTurn = ctx.analysisTurn;
 
     // Mark this message as actively streaming to suppress UI rebuilds
     streamController.markStreamingStarted(state.messageId);
 
     try {
+      if (analysisTurn != null) {
+        await messageGenerationService.analysisCaptureService.markRequestSent(
+          analysisTurn,
+        );
+      }
       final stream = ChatApiService.sendMessageStream(
         config: ctx.config,
         modelId: ctx.modelId,
@@ -1079,7 +1093,11 @@ class ChatActions {
     // Compute final duration
     final finalDurationMs = state.streamStartedAt != null
         ? DateTime.now().difference(state.streamStartedAt!).inMilliseconds
-        : null;
+        : (state.requestStartedAt != null
+              ? DateTime.now()
+                    .difference(state.requestStartedAt!)
+                    .inMilliseconds
+              : null);
     final finalPromptTokens = state.usage?.promptTokens;
     final finalCompletionTokens = state.usage?.completionTokens;
     final finalCachedTokens = state.usage?.cachedTokens;
@@ -1154,6 +1172,24 @@ class ChatActions {
           },
     );
 
+    final finalMessage = _messages.firstWhere(
+      (m) => m.id == messageId,
+      orElse: () => state.ctx.assistantMessage,
+    );
+    final reasoningText =
+        streamController.reasoning[messageId]?.text ??
+        finalMessage.reasoningText;
+    await messageGenerationService.analysisCaptureService.markCompleted(
+      turnId: messageId,
+      chatService: chatService,
+      finalMessage: finalMessage,
+      assistantText: sanitizedContent,
+      reasoningText: reasoningText,
+      usage: state.usage,
+      totalTokens: state.totalTokens,
+      latencyMs: finalDurationMs,
+    );
+
     if (shouldGenerateTitle) {
       onMaybeGenerateTitle?.call(conversationId);
     }
@@ -1170,6 +1206,9 @@ class ChatActions {
     final messageId = state.messageId;
     final conversationId = state.conversationId;
     final errorText = e.toString();
+    final latencyMs = state.requestStartedAt != null
+        ? DateTime.now().difference(state.requestStartedAt!).inMilliseconds
+        : null;
 
     // Reset file processing state on error
     onFileProcessingFinished?.call();
@@ -1226,6 +1265,13 @@ class ChatActions {
     );
 
     await _conversationStreams.remove(conversationId)?.cancel();
+    await messageGenerationService.analysisCaptureService.markError(
+      turnId: messageId,
+      errorText: errorText,
+      displayContent: displayContent,
+      totalTokens: state.totalTokens,
+      latencyMs: latencyMs,
+    );
     onStreamError?.call(errorText);
     onStreamFinished?.call();
   }

@@ -8,6 +8,7 @@ import '../../../core/models/conversation.dart';
 import '../../../core/providers/assistant_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/services/api/chat_api_service.dart';
+import '../../../core/services/analysis/rolling_summary_service.dart';
 import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/logging/flutter_logger.dart';
 import '../../chat/widgets/chat_message_widget.dart' show ToolUIPart;
@@ -39,6 +40,7 @@ class HomeViewModel extends ChangeNotifier {
     required stream_ctrl.StreamController streamController,
     required ChatController chatController,
     required BuildContext contextProvider,
+    required RollingSummaryService rollingSummaryService,
     required this.getTitleForLocale,
   }) : _chatService = chatService,
        _messageBuilderService = messageBuilderService,
@@ -46,7 +48,8 @@ class HomeViewModel extends ChangeNotifier {
        _generationController = generationController,
        _streamController = streamController,
        _chatController = chatController,
-       _contextProvider = contextProvider {
+       _contextProvider = contextProvider,
+       _rollingSummaryService = rollingSummaryService {
     // Initialize ChatActions
     _chatActions = ChatActions(
       chatService: chatService,
@@ -83,6 +86,7 @@ class HomeViewModel extends ChangeNotifier {
   final stream_ctrl.StreamController _streamController;
   final ChatController _chatController;
   final BuildContext _contextProvider;
+  final RollingSummaryService _rollingSummaryService;
   late final ChatActions _chatActions;
   QueuedChatInput? _queuedInput;
   bool _isDrainingQueuedInput = false;
@@ -195,6 +199,7 @@ class HomeViewModel extends ChangeNotifier {
   void _onMaybeGenerateSummary(String conversationId) {
     // Trigger summary generation asynchronously
     _maybeGenerateSummaryFor(conversationId);
+    _maybeGenerateRollingSummaryFor(conversationId);
   }
 
   void _onStreamFinished() {
@@ -1035,6 +1040,25 @@ class HomeViewModel extends ChangeNotifier {
     } catch (_) {
       // Keep old summary on failure, ignore silently
     }
+  }
+
+  Future<void> _maybeGenerateRollingSummaryFor(String conversationId) async {
+    final convo = _chatService.getConversation(conversationId);
+    if (convo == null) return;
+
+    final settings = _contextProvider.read<SettingsProvider>();
+    final assistantProvider = _contextProvider.read<AssistantProvider>();
+    final assistant = convo.assistantId != null
+        ? assistantProvider.getById(convo.assistantId!)
+        : assistantProvider.currentAssistant;
+    final budget = assistant?.thinkingBudget ?? settings.thinkingBudget;
+
+    await _rollingSummaryService.maybeGenerateForConversation(
+      conversationId: conversationId,
+      assistant: assistant,
+      settings: settings,
+      thinkingBudget: budget,
+    );
   }
 
   // ============================================================================

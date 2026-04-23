@@ -229,6 +229,7 @@ class GenerationController {
       onToolCall: onToolCall,
       extraHeaders: extraHeaders,
       extraBody: extraBody,
+      analysisTurn: null,
       supportsReasoning: supportsReasoning,
       enableReasoning: enableReasoning,
       streamOutput: streamOutput,

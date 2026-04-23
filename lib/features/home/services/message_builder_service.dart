@@ -7,6 +7,7 @@ import '../../../core/models/chat_input_data.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
 import '../../../core/models/instruction_injection.dart';
+import '../../../core/models/assistant_memory.dart';
 import '../../../core/models/world_book.dart';
 import '../../../core/providers/memory_provider.dart';
 import '../../../core/providers/settings_provider.dart';
@@ -15,6 +16,7 @@ import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/chat/document_text_extractor.dart';
 import '../../../core/services/chat/prompt_transformer.dart';
 import '../../../core/services/instruction_injection_store.dart';
+import '../../../core/services/analysis/rolling_summary_service.dart';
 import '../../../core/services/world_book_store.dart';
 import '../../../core/services/search/search_tool_service.dart';
 import '../../../core/providers/instruction_injection_provider.dart';
@@ -42,6 +44,7 @@ class MessageBuilderService {
   MessageBuilderService({
     required this.chatService,
     required this.contextProvider,
+    this.rollingSummaryService,
     this.ocrHandler,
     this.geminiThoughtSignatureHandler,
   });
@@ -50,6 +53,7 @@ class MessageBuilderService {
 
   /// Build context (used for accessing providers via context.read)
   final BuildContext contextProvider;
+  final RollingSummaryService? rollingSummaryService;
 
   /// OCR handler for processing images (optional, injected from home_page)
   final Future<String?> Function(List<String> imagePaths)? ocrHandler;
@@ -441,7 +445,7 @@ class MessageBuilderService {
   }
 
   /// Inject system prompt into apiMessages.
-  void injectSystemPrompt(
+  String? injectSystemPrompt(
     List<Map<String, dynamic>> apiMessages,
     Assistant? assistant,
     String modelId,
@@ -459,15 +463,20 @@ class MessageBuilderService {
         vars,
       );
       apiMessages.insert(0, {'role': 'system', 'content': sys});
+      return sys;
     }
+    return null;
   }
 
   /// Inject memory prompts and recent chats reference into apiMessages.
-  Future<void> injectMemoryAndRecentChats(
+  Future<MemoryAndRecentChatsInjectionCapture> injectMemoryAndRecentChats(
     List<Map<String, dynamic>> apiMessages,
     Assistant? assistant, {
     String? currentConversationId,
   }) async {
+    final memoryRecords = <Map<String, dynamic>>[];
+    final recentChatSummaries = <Map<String, dynamic>>[];
+    Map<String, dynamic>? rollingSummary;
     try {
       if (assistant?.enableMemory == true) {
         final mp = contextProvider.read<MemoryProvider>();
@@ -480,6 +489,7 @@ class MessageBuilderService {
         );
         buf.writeln('<memories>');
         for (final m in mems) {
+          memoryRecords.add(_memoryRecordToJson(m));
           buf.writeln('<record>');
           buf.writeln('<id>${m.id}</id>');
           buf.writeln('<content>${m.content}</content>');
@@ -512,14 +522,9 @@ class MessageBuilderService {
         _appendToSystemMessage(apiMessages, buf.toString());
       }
       if (assistant?.enableRecentChatsReference == true) {
-        final chats = chatService.getAllConversations();
-        final relevantChats = chats
-            .where(
-              (c) =>
-                  c.assistantId == assistant!.id &&
-                  c.id != currentConversationId,
-            )
-            .where((c) => c.title.trim().isNotEmpty)
+        final relevantChats = chatService
+            .getConversationsWithSummaryForAssistant(assistant!.id)
+            .where((c) => c.id != currentConversationId)
             .take(10)
             .toList();
         if (relevantChats.isNotEmpty) {
@@ -527,6 +532,12 @@ class MessageBuilderService {
           sb.writeln('<recent_chats>');
           sb.writeln('这是用户最近的一些对话标题和摘要，你可以参考这些内容了解用户偏好和关注点');
           for (final c in relevantChats) {
+            recentChatSummaries.add({
+              'id': c.id,
+              'title': c.title,
+              'updated_at': c.updatedAt.toIso8601String(),
+              'summary': c.summary,
+            });
             sb.writeln('<conversation>');
             // Format: timestamp: title || summary
             final timestamp = c.updatedAt.toIso8601String().substring(0, 10);
@@ -543,11 +554,35 @@ class MessageBuilderService {
           _appendToSystemMessage(apiMessages, sb.toString());
         }
       }
+      if (currentConversationId != null &&
+          currentConversationId.trim().isNotEmpty &&
+          rollingSummaryService != null) {
+        final latestRollingSummary = await rollingSummaryService!.getLatest(
+          currentConversationId,
+        );
+        final summaryText = (latestRollingSummary?['summary_text'] ?? '')
+            .toString()
+            .trim();
+        if (summaryText.isNotEmpty) {
+          rollingSummary = latestRollingSummary;
+          _appendToSystemMessage(apiMessages, '''
+<current_chat_rolling_summary>
+This is the latest working summary for the current conversation. Use it to preserve continuity after context trimming.
+$summaryText
+</current_chat_rolling_summary>
+''');
+        }
+      }
     } catch (_) {}
+    return MemoryAndRecentChatsInjectionCapture(
+      memoryRecords: memoryRecords,
+      recentChatSummaries: recentChatSummaries,
+      rollingSummary: rollingSummary,
+    );
   }
 
   /// Inject search tool usage prompt into apiMessages.
-  void injectSearchPrompt(
+  String? injectSearchPrompt(
     List<Map<String, dynamic>> apiMessages,
     SettingsProvider settings,
     bool hasBuiltInSearch,
@@ -555,11 +590,13 @@ class MessageBuilderService {
     if (settings.searchEnabled && !hasBuiltInSearch) {
       final prompt = SearchToolService.getSystemPrompt();
       _appendToSystemMessage(apiMessages, prompt);
+      return prompt;
     }
+    return null;
   }
 
   /// Inject instruction injection prompts into apiMessages.
-  Future<void> injectInstructionPrompts(
+  Future<List<Map<String, dynamic>>> injectInstructionPrompts(
     List<Map<String, dynamic>> apiMessages,
     String? assistantId,
   ) async {
@@ -586,11 +623,13 @@ class MessageBuilderService {
         final lp = prompts.join('\n\n');
         _appendToSystemMessage(apiMessages, lp);
       }
+      return actives.map(_instructionToJson).toList(growable: false);
     } catch (_) {}
+    return const <Map<String, dynamic>>[];
   }
 
   /// Inject world book (lorebook) entries into apiMessages.
-  Future<void> injectWorldBookPrompts(
+  Future<List<Map<String, dynamic>>> injectWorldBookPrompts(
     List<Map<String, dynamic>> apiMessages,
     String? assistantId,
   ) async {
@@ -615,13 +654,15 @@ class MessageBuilderService {
         );
       }
 
-      if (all.isEmpty || activeBookIds.isEmpty) return;
+      if (all.isEmpty || activeBookIds.isEmpty) {
+        return const <Map<String, dynamic>>[];
+      }
 
       final activeSet = activeBookIds.toSet();
       final books = all
           .where((b) => b.enabled && activeSet.contains(b.id))
           .toList(growable: false);
-      if (books.isEmpty) return;
+      if (books.isEmpty) return const <Map<String, dynamic>>[];
 
       String extractContextForDepth(int scanDepth) {
         final depth = scanDepth <= 0 ? 1 : scanDepth;
@@ -668,7 +709,7 @@ class MessageBuilderService {
       }
 
       final contextCache = <int, String>{};
-      final triggered = <({WorldBookEntry entry, int seq})>[];
+      final triggered = <({WorldBook book, WorldBookEntry entry, int seq})>[];
       int seq = 0;
 
       for (final book in books) {
@@ -681,13 +722,13 @@ class MessageBuilderService {
             () => extractContextForDepth(depth),
           );
           if (isTriggered(entry, ctx)) {
-            triggered.add((entry: entry, seq: seq));
+            triggered.add((book: book, entry: entry, seq: seq));
           }
           seq++;
         }
       }
 
-      if (triggered.isEmpty) return;
+      if (triggered.isEmpty) return const <Map<String, dynamic>>[];
 
       triggered.sort((a, b) {
         final pa = a.entry.priority;
@@ -839,7 +880,11 @@ class MessageBuilderService {
           );
         }
       }
+      return triggered
+          .map((t) => _worldBookEntryToJson(t.book, t.entry))
+          .toList(growable: false);
     } catch (_) {}
+    return const <Map<String, dynamic>>[];
   }
 
   /// Helper to append content to the system message (or create one if missing).
@@ -856,10 +901,12 @@ class MessageBuilderService {
   }
 
   /// Apply context message limit based on assistant settings.
-  void applyContextLimit(
+  Map<String, dynamic> applyContextLimit(
     List<Map<String, dynamic>> apiMessages,
     Assistant? assistant,
   ) {
+    final beforeCount = apiMessages.length;
+    final keptMessages = <Map<String, dynamic>>[];
     if ((assistant?.limitContextMessages ?? true) &&
         (assistant?.contextMessageSize ?? 0) > 0) {
       final int keep = (assistant!.contextMessageSize).clamp(
@@ -876,13 +923,37 @@ class MessageBuilderService {
         apiMessages
           ..removeRange(startIdx, apiMessages.length)
           ..addAll(trimmed);
+        keptMessages
+          ..clear()
+          ..addAll(trimmed);
       }
       // Context trimming can cut in the middle of a tool-call triplet; avoid sending dangling tool messages.
       while (apiMessages.length > startIdx &&
           (apiMessages[startIdx]['role'] ?? '').toString() == 'tool') {
         apiMessages.removeAt(startIdx);
       }
+      return {
+        'applied': true,
+        'requested_keep': keep,
+        'before_count': beforeCount,
+        'after_count': apiMessages.length,
+        'system_preserved': startIdx == 1,
+        'trimmed': apiMessages.length < beforeCount,
+        'kept_preview': (keptMessages.isEmpty ? apiMessages : keptMessages)
+            .map(_previewMessage)
+            .toList(growable: false),
+      };
     }
+    return {
+      'applied': false,
+      'before_count': beforeCount,
+      'after_count': apiMessages.length,
+      'system_preserved':
+          apiMessages.isNotEmpty &&
+          (apiMessages.first['role'] ?? '').toString() == 'system',
+      'trimmed': false,
+      'kept_preview': apiMessages.map(_previewMessage).toList(growable: false),
+    };
   }
 
   /// Convert local Markdown image links to inline base64 for model context.
@@ -912,6 +983,47 @@ class MessageBuilderService {
       return false;
     }
   }
+
+  Map<String, dynamic> _memoryRecordToJson(AssistantMemory memory) => {
+    'id': memory.id,
+    'assistant_id': memory.assistantId,
+    'content': memory.content,
+  };
+
+  Map<String, dynamic> _instructionToJson(InstructionInjection injection) => {
+    'id': injection.id,
+    'title': injection.title,
+    'prompt': injection.prompt,
+    'group': injection.group,
+  };
+
+  Map<String, dynamic> _worldBookEntryToJson(
+    WorldBook book,
+    WorldBookEntry entry,
+  ) => {
+    'book_id': book.id,
+    'book_name': book.name,
+    'entry_id': entry.id,
+    'entry_name': entry.name,
+    'content': entry.content,
+    'priority': entry.priority,
+    'position': entry.position.toJson(),
+    'role': entry.role.toJson(),
+    'inject_depth': entry.injectDepth,
+    'scan_depth': entry.scanDepth,
+    'constant_active': entry.constantActive,
+  };
+
+  static Map<String, dynamic> _previewMessage(Map<String, dynamic> message) => {
+    'role': (message['role'] ?? '').toString(),
+    'content': _excerpt((message['content'] ?? '').toString()),
+  };
+
+  static String _excerpt(String value, {int maxLength = 200}) {
+    final normalized = value.trim();
+    if (normalized.length <= maxLength) return normalized;
+    return '${normalized.substring(0, maxLength)}...';
+  }
 }
 
 class _DocTextCacheEntry {
@@ -924,4 +1036,16 @@ class _DocTextCacheEntry {
   final String? text;
   final int modifiedMs;
   final int size;
+}
+
+class MemoryAndRecentChatsInjectionCapture {
+  const MemoryAndRecentChatsInjectionCapture({
+    this.memoryRecords = const <Map<String, dynamic>>[],
+    this.recentChatSummaries = const <Map<String, dynamic>>[],
+    this.rollingSummary,
+  });
+
+  final List<Map<String, dynamic>> memoryRecords;
+  final List<Map<String, dynamic>> recentChatSummaries;
+  final Map<String, dynamic>? rollingSummary;
 }

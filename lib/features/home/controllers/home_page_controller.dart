@@ -15,6 +15,8 @@ import '../../../core/providers/tts_provider.dart';
 import '../../../core/providers/quick_phrase_provider.dart';
 import '../../../core/providers/instruction_injection_provider.dart';
 import '../../../core/providers/memory_provider.dart';
+import '../../../core/services/analysis/analysis_capture_service.dart';
+import '../../../core/services/analysis/rolling_summary_service.dart';
 import '../../../core/services/chat/chat_service.dart';
 import '../../../core/services/haptics.dart';
 import '../../../l10n/app_localizations.dart';
@@ -102,6 +104,8 @@ class HomePageController extends ChangeNotifier {
   late GenerationController _generationController;
   late MessageBuilderService _messageBuilderService;
   late MessageGenerationService _messageGenerationService;
+  late AnalysisCaptureService _analysisCaptureService;
+  late RollingSummaryService _rollingSummaryService;
   late HomeViewModel _viewModel;
   late OcrService _ocrService;
   late TranslationService _translationService;
@@ -301,9 +305,12 @@ class HomePageController extends ChangeNotifier {
       mediaController: _mediaController,
       onScrollToBottom: () => _scrollToBottomSoon(),
     );
+    _analysisCaptureService = AnalysisCaptureService();
+    _rollingSummaryService = RollingSummaryService(chatService: _chatService);
     _messageBuilderService = MessageBuilderService(
       chatService: _chatService,
       contextProvider: _context,
+      rollingSummaryService: _rollingSummaryService,
       ocrHandler: (imagePaths) =>
           _ocrService.getOcrTextForImages(imagePaths, _context),
       geminiThoughtSignatureHandler: _appendGeminiThoughtSignatureForApi,
@@ -324,6 +331,7 @@ class HomePageController extends ChangeNotifier {
       generationController: _generationController,
       streamController: _streamController,
       contextProvider: _context,
+      analysisCaptureService: _analysisCaptureService,
     );
   }
 
@@ -336,6 +344,7 @@ class HomePageController extends ChangeNotifier {
       streamController: _streamController,
       chatController: _chatController,
       contextProvider: _context,
+      rollingSummaryService: _rollingSummaryService,
       getTitleForLocale: _titleForLocale,
     );
     _viewModel.addListener(notifyListeners);

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
 import '../../../core/models/assistant.dart';
+import '../../../core/services/analysis/analysis_capture_service.dart';
 import '../../../core/models/chat_input_data.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
@@ -52,6 +53,14 @@ class PreparedGeneration {
   final Future<String> Function(String, Map<String, dynamic>)? onToolCall;
   final bool hasBuiltInSearch;
   final List<String> lastUserImagePaths;
+  final String? systemPrompt;
+  final List<Map<String, dynamic>> memoryRecords;
+  final List<Map<String, dynamic>> recentChatSummaries;
+  final Map<String, dynamic>? rollingSummary;
+  final List<Map<String, dynamic>> instructionPrompts;
+  final List<Map<String, dynamic>> worldBookEntries;
+  final String? searchPrompt;
+  final Map<String, dynamic> contextLimit;
 
   PreparedGeneration({
     required this.apiMessages,
@@ -59,6 +68,14 @@ class PreparedGeneration {
     this.onToolCall,
     required this.hasBuiltInSearch,
     required this.lastUserImagePaths,
+    this.systemPrompt,
+    this.memoryRecords = const <Map<String, dynamic>>[],
+    this.recentChatSummaries = const <Map<String, dynamic>>[],
+    this.rollingSummary,
+    this.instructionPrompts = const <Map<String, dynamic>>[],
+    this.worldBookEntries = const <Map<String, dynamic>>[],
+    this.searchPrompt,
+    this.contextLimit = const <String, dynamic>{},
   });
 }
 
@@ -78,6 +95,7 @@ class MessageGenerationService {
     required this.generationController,
     required this.streamController,
     required this.contextProvider,
+    required this.analysisCaptureService,
   });
 
   final ChatService chatService;
@@ -85,6 +103,7 @@ class MessageGenerationService {
   final GenerationController generationController;
   final stream_ctrl.StreamController streamController;
   final BuildContext contextProvider;
+  final AnalysisCaptureService analysisCaptureService;
 
   // Callbacks for UI updates (set by home_page)
   OnMessagesChanged? onMessagesChanged;
@@ -160,34 +179,40 @@ class MessageGenerationService {
     onFileProcessingFinished?.call();
 
     // Inject prompts
-    messageBuilderService.injectSystemPrompt(apiMessages, assistant, modelId);
-    await messageBuilderService.injectMemoryAndRecentChats(
+    final systemPrompt = messageBuilderService.injectSystemPrompt(
       apiMessages,
       assistant,
-      currentConversationId: currentConversation?.id,
+      modelId,
     );
+    final memoryAndChats = await messageBuilderService
+        .injectMemoryAndRecentChats(
+          apiMessages,
+          assistant,
+          currentConversationId: currentConversation?.id,
+        );
 
     final hasBuiltInSearch = messageBuilderService.hasBuiltInSearch(
       settings,
       providerKey,
       modelId,
     );
-    messageBuilderService.injectSearchPrompt(
+    final searchPrompt = messageBuilderService.injectSearchPrompt(
       apiMessages,
       settings,
       hasBuiltInSearch,
     );
-    await messageBuilderService.injectInstructionPrompts(
-      apiMessages,
-      assistantId,
-    );
-    await messageBuilderService.injectWorldBookPrompts(
+    final instructionPrompts = await messageBuilderService
+        .injectInstructionPrompts(apiMessages, assistantId);
+    final worldBookEntries = await messageBuilderService.injectWorldBookPrompts(
       apiMessages,
       assistantId,
     );
 
     // Apply context limit and inline images
-    messageBuilderService.applyContextLimit(apiMessages, assistant);
+    final contextLimit = messageBuilderService.applyContextLimit(
+      apiMessages,
+      assistant,
+    );
     await messageBuilderService.inlineLocalImages(apiMessages);
 
     // Prepare tools
@@ -212,6 +237,14 @@ class MessageGenerationService {
       onToolCall: onToolCall,
       hasBuiltInSearch: hasBuiltInSearch,
       lastUserImagePaths: lastUserImagePaths,
+      systemPrompt: systemPrompt,
+      memoryRecords: memoryAndChats.memoryRecords,
+      recentChatSummaries: memoryAndChats.recentChatSummaries,
+      rollingSummary: memoryAndChats.rollingSummary,
+      instructionPrompts: instructionPrompts,
+      worldBookEntries: worldBookEntries,
+      searchPrompt: searchPrompt,
+      contextLimit: contextLimit,
     );
   }
 
@@ -277,7 +310,7 @@ class MessageGenerationService {
   }
 
   /// Build GenerationContext for streaming.
-  stream_ctrl.GenerationContext buildGenerationContext({
+  Future<stream_ctrl.GenerationContext> buildGenerationContext({
     required ChatMessage assistantMessage,
     required PreparedGeneration prepared,
     required List<String> userImagePaths,
@@ -288,7 +321,38 @@ class MessageGenerationService {
     required bool supportsReasoning,
     required bool enableReasoning,
     required bool generateTitleOnFinish,
-  }) {
+  }) async {
+    final baseHeaders = buildConversationRequestHeaders(
+      conversationId: assistantMessage.conversationId,
+      customHeaders: generationController.buildCustomHeaders(assistant),
+    );
+    final baseBody = generationController.buildCustomBody(assistant);
+    final injectSnapshot = _buildInjectSnapshot(prepared);
+    final injectLog = _buildInjectLog(prepared);
+    final analysisTurn = await analysisCaptureService.prepareTurn(
+      assistantMessage: assistantMessage,
+      assistantId: assistant?.id,
+      providerKey: providerKey,
+      modelId: modelId,
+      stream: assistant?.streamOutput ?? true,
+      apiMessages: prepared.apiMessages,
+      toolDefs: prepared.toolDefs,
+      injectSnapshot: injectSnapshot,
+      injectLog: injectLog,
+      rollingShortBefore: currentConversationSummary(
+        assistantMessage.conversationId,
+      ),
+      rollingShortAfter: currentConversationSummary(
+        assistantMessage.conversationId,
+      ),
+      requestHeaders: baseHeaders,
+      existingBody: baseBody,
+    );
+    final extraHeaders = _mergeStringMaps(
+      baseHeaders,
+      analysisTurn.extraHeaders,
+    );
+    final extraBody = analysisTurn.extraBody ?? baseBody;
     return stream_ctrl.GenerationContext(
       assistantMessage: assistantMessage,
       apiMessages: prepared.apiMessages,
@@ -300,16 +364,18 @@ class MessageGenerationService {
       config: settings.getProviderConfig(providerKey),
       toolDefs: prepared.toolDefs,
       onToolCall: prepared.onToolCall,
-      extraHeaders: buildConversationRequestHeaders(
-        conversationId: assistantMessage.conversationId,
-        customHeaders: generationController.buildCustomHeaders(assistant),
-      ),
-      extraBody: generationController.buildCustomBody(assistant),
+      extraHeaders: extraHeaders,
+      extraBody: extraBody,
       supportsReasoning: supportsReasoning,
       enableReasoning: enableReasoning,
       streamOutput: assistant?.streamOutput ?? true,
       generateTitleOnFinish: generateTitleOnFinish,
+      analysisTurn: analysisTurn,
     );
+  }
+
+  String? currentConversationSummary(String conversationId) {
+    return chatService.getConversation(conversationId)?.summary;
   }
 
   /// Get current model and provider from assistant or global settings.
@@ -322,6 +388,130 @@ class MessageGenerationService {
           assistant?.chatModelProvider ?? settings.currentModelProvider,
       modelId: assistant?.chatModelId ?? settings.currentModelId,
     );
+  }
+
+  Map<String, dynamic> _buildInjectSnapshot(PreparedGeneration prepared) {
+    return {
+      'system_messages': prepared.apiMessages
+          .where((m) => (m['role'] ?? '').toString() == 'system')
+          .map((m) => (m['content'] ?? '').toString())
+          .toList(growable: false),
+      'memory_records': prepared.memoryRecords,
+      'recent_chat_summaries': prepared.recentChatSummaries,
+      'rolling_summary': prepared.rollingSummary,
+      'instruction_prompts': prepared.instructionPrompts,
+      'world_book_entries': prepared.worldBookEntries,
+      'search_prompt_enabled': prepared.searchPrompt != null,
+      'context_limit': prepared.contextLimit,
+      'api_messages_preview': prepared.apiMessages
+          .map(
+            (m) => {
+              'role': (m['role'] ?? '').toString(),
+              'content': _excerpt((m['content'] ?? '').toString()),
+            },
+          )
+          .toList(growable: false),
+    };
+  }
+
+  List<Map<String, dynamic>> _buildInjectLog(PreparedGeneration prepared) {
+    final out = <Map<String, dynamic>>[];
+    if ((prepared.systemPrompt ?? '').trim().isNotEmpty) {
+      out.add({
+        'kind': 'system_prompt',
+        'source_id': 'assistant_system_prompt',
+        'title': 'assistant_system_prompt',
+        'reason': 'assistant.systemPrompt',
+        'content_excerpt': _excerpt(prepared.systemPrompt!),
+        'position': 0,
+        'payload_json': {'content': prepared.systemPrompt},
+      });
+    }
+    for (final memory in prepared.memoryRecords) {
+      out.add({
+        'kind': 'memory',
+        'source_id': memory['id']?.toString(),
+        'title': 'memory_${memory['id']}',
+        'reason': 'assistant_memory',
+        'content_excerpt': _excerpt((memory['content'] ?? '').toString()),
+        'position': null,
+        'payload_json': memory,
+      });
+    }
+    for (final chat in prepared.recentChatSummaries) {
+      out.add({
+        'kind': 'recent_chat_summary',
+        'source_id': chat['id']?.toString(),
+        'title': (chat['title'] ?? '').toString(),
+        'reason': 'recent_chat_reference',
+        'content_excerpt': _excerpt((chat['summary'] ?? '').toString()),
+        'position': null,
+        'payload_json': chat,
+      });
+    }
+    if (prepared.rollingSummary != null) {
+      out.add({
+        'kind': 'rolling_summary',
+        'source_id': prepared.rollingSummary!['session_id']?.toString(),
+        'title': 'current_chat_rolling_summary',
+        'reason': 'current_chat_continuity',
+        'content_excerpt': _excerpt(
+          (prepared.rollingSummary!['summary_text'] ?? '').toString(),
+        ),
+        'position': null,
+        'payload_json': prepared.rollingSummary,
+      });
+    }
+    for (final instruction in prepared.instructionPrompts) {
+      out.add({
+        'kind': 'instruction',
+        'source_id': instruction['id']?.toString(),
+        'title': (instruction['title'] ?? '').toString(),
+        'reason': 'instruction_injection',
+        'content_excerpt': _excerpt((instruction['prompt'] ?? '').toString()),
+        'position': null,
+        'payload_json': instruction,
+      });
+    }
+    for (final worldBook in prepared.worldBookEntries) {
+      out.add({
+        'kind': 'world_book',
+        'source_id': worldBook['entry_id']?.toString(),
+        'title': (worldBook['entry_name'] ?? '').toString(),
+        'reason': 'world_book_trigger',
+        'content_excerpt': _excerpt((worldBook['content'] ?? '').toString()),
+        'position': null,
+        'payload_json': worldBook,
+      });
+    }
+    if ((prepared.searchPrompt ?? '').trim().isNotEmpty) {
+      out.add({
+        'kind': 'search_prompt',
+        'source_id': 'search_prompt',
+        'title': 'search_prompt',
+        'reason': 'search_enabled_without_builtin_search',
+        'content_excerpt': _excerpt(prepared.searchPrompt!),
+        'position': null,
+        'payload_json': {'content': prepared.searchPrompt},
+      });
+    }
+    return out;
+  }
+
+  Map<String, String>? _mergeStringMaps(
+    Map<String, String>? first,
+    Map<String, String>? second,
+  ) {
+    final merged = <String, String>{};
+    if (first != null) merged.addAll(first);
+    if (second != null) merged.addAll(second);
+    return merged.isEmpty ? null : merged;
+  }
+
+  static String _excerpt(String value, {int maxLength = 240}) {
+    final normalized = value.trim();
+    if (normalized.length <= maxLength) return normalized;
+    return '${normalized.substring(0, maxLength)}...';
   }
 
   /// Calculate version info for regeneration.

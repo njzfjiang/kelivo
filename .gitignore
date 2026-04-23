@@ -63,3 +63,8 @@ internationalization.md
 /.agent/
 /.agents/
 /skills-lock.json
+
+# FVM Version Cache
+.fvm/
+/analysis_v1.db*
+/proxy_analysis_v1.db*

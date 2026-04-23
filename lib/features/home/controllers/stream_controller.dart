@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/token_usage.dart';
+import '../../../core/services/analysis/analysis_capture_service.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/services/api/chat_api_service.dart';
 import '../../../core/services/chat/chat_service.dart';
@@ -1181,6 +1182,7 @@ class GenerationContext {
     this.onToolCall,
     this.extraHeaders,
     this.extraBody,
+    this.analysisTurn,
     required this.supportsReasoning,
     required this.enableReasoning,
     required this.streamOutput,
@@ -1199,6 +1201,7 @@ class GenerationContext {
   final Future<String> Function(String, Map<String, dynamic>)? onToolCall;
   final Map<String, String>? extraHeaders;
   final Map<String, dynamic>? extraBody;
+  final AnalysisTurnContext? analysisTurn;
   final bool supportsReasoning;
   final bool enableReasoning;
   final bool streamOutput;
@@ -1218,6 +1221,7 @@ class StreamingState {
   bool finishHandled = false;
   bool titleQueued = false;
   DateTime? streamStartedAt;
+  DateTime? requestStartedAt;
   bool hadThinkingBlock = false;
   List<int> contentSplitOffsets = <int>[];
   List<int> reasoningCountAtSplit = <int>[];
