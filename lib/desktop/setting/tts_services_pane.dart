@@ -1109,9 +1109,7 @@ Future<TtsServiceOptions?> _showNetworkDialog(
                                 networkTtsKindDisplayName(
                                   NetworkTtsKind.elevenlabs,
                                 ),
-                                networkTtsKindDisplayName(
-                                  NetworkTtsKind.mimo,
-                                ),
+                                networkTtsKindDisplayName(NetworkTtsKind.mimo),
                               ],
                               onSelected: (picked) {
                                 setState(() {

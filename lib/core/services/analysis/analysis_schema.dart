@@ -80,6 +80,44 @@ CREATE TABLE IF NOT EXISTS rolling_summaries (
   summary_text TEXT NOT NULL
 );
 ''');
+  db.execute('''
+CREATE TABLE IF NOT EXISTS summary_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  assistant_id TEXT,
+  created_at TEXT NOT NULL,
+  source_from_message_count INTEGER NOT NULL,
+  source_to_message_count INTEGER NOT NULL,
+  summary_text TEXT NOT NULL,
+  previous_summary_text TEXT,
+  input_excerpt TEXT,
+  prompt_json TEXT,
+  provider_key TEXT,
+  model_id TEXT,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id)
+);
+''');
+  db.execute('''
+CREATE TABLE IF NOT EXISTS memory_suggestions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  assistant_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  source_summary_version_id INTEGER,
+  source_turn_id TEXT,
+  candidate_text TEXT NOT NULL,
+  reason TEXT,
+  confidence REAL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  review_note TEXT,
+  accepted_memory_id TEXT,
+  payload_json TEXT,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id),
+  FOREIGN KEY(source_summary_version_id) REFERENCES summary_versions(id),
+  FOREIGN KEY(source_turn_id) REFERENCES turns(turn_id)
+);
+''');
   db.execute(
     'CREATE INDEX IF NOT EXISTS idx_turns_session_seq ON turns(session_id, seq);',
   );
@@ -95,5 +133,20 @@ CREATE TABLE IF NOT EXISTS rolling_summaries (
   );
   db.execute(
     'CREATE INDEX IF NOT EXISTS idx_rolling_summaries_updated_at ON rolling_summaries(updated_at);',
+  );
+  db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_summary_versions_session_created ON summary_versions(session_id, created_at);',
+  );
+  db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_summary_versions_assistant_created ON summary_versions(assistant_id, created_at);',
+  );
+  db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_memory_suggestions_session_status ON memory_suggestions(session_id, status);',
+  );
+  db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_memory_suggestions_status ON memory_suggestions(status);',
+  );
+  db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_memory_suggestions_source_summary ON memory_suggestions(source_summary_version_id);',
   );
 }

@@ -50,6 +50,7 @@ Map<String, String>? buildConversationRequestHeaders({
 class PreparedGeneration {
   final List<Map<String, dynamic>> apiMessages;
   final List<Map<String, dynamic>> toolDefs;
+  final Map<String, dynamic> mcpDiagnostics;
   final Future<String> Function(String, Map<String, dynamic>)? onToolCall;
   final bool hasBuiltInSearch;
   final List<String> lastUserImagePaths;
@@ -65,6 +66,7 @@ class PreparedGeneration {
   PreparedGeneration({
     required this.apiMessages,
     required this.toolDefs,
+    this.mcpDiagnostics = const <String, dynamic>{},
     this.onToolCall,
     required this.hasBuiltInSearch,
     required this.lastUserImagePaths,
@@ -223,6 +225,12 @@ class MessageGenerationService {
       modelId,
       hasBuiltInSearch,
     );
+    final mcpDiagnostics = generationController.buildMcpDiagnostics(
+      settings,
+      assistant,
+      providerKey,
+      modelId,
+    );
     final onToolCall = toolDefs.isNotEmpty
         ? generationController.buildToolCallHandler(
             settings,
@@ -234,6 +242,7 @@ class MessageGenerationService {
     return PreparedGeneration(
       apiMessages: apiMessages,
       toolDefs: toolDefs,
+      mcpDiagnostics: mcpDiagnostics,
       onToolCall: onToolCall,
       hasBuiltInSearch: hasBuiltInSearch,
       lastUserImagePaths: lastUserImagePaths,
@@ -399,6 +408,17 @@ class MessageGenerationService {
       'memory_records': prepared.memoryRecords,
       'recent_chat_summaries': prepared.recentChatSummaries,
       'rolling_summary': prepared.rollingSummary,
+      'mcp_diagnostics': prepared.mcpDiagnostics,
+      'tool_definitions': prepared.toolDefs
+          .map(
+            (tool) => {
+              'type': (tool['type'] ?? '').toString(),
+              'name': ((tool['function'] as Map?)?['name'] ?? '').toString(),
+              'description': ((tool['function'] as Map?)?['description'] ?? '')
+                  .toString(),
+            },
+          )
+          .toList(growable: false),
       'instruction_prompts': prepared.instructionPrompts,
       'world_book_entries': prepared.worldBookEntries,
       'search_prompt_enabled': prepared.searchPrompt != null,
@@ -460,6 +480,24 @@ class MessageGenerationService {
         ),
         'position': null,
         'payload_json': prepared.rollingSummary,
+      });
+    }
+    final enabledTools =
+        (prepared.mcpDiagnostics['enabled_mcp_tool_names'] as List?)
+            ?.map((e) => e.toString())
+            .toList(growable: false) ??
+        const <String>[];
+    if (prepared.mcpDiagnostics.isNotEmpty) {
+      out.add({
+        'kind': 'mcp_tools',
+        'source_id': 'mcp_tools',
+        'title': 'mcp_tools',
+        'reason': (prepared.mcpDiagnostics['reason'] ?? '').toString(),
+        'content_excerpt': enabledTools.isEmpty
+            ? 'no_mcp_tools_injected'
+            : enabledTools.join(', '),
+        'position': null,
+        'payload_json': prepared.mcpDiagnostics,
       });
     }
     for (final instruction in prepared.instructionPrompts) {

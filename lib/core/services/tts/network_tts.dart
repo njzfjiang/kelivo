@@ -96,7 +96,8 @@ abstract class TtsServiceOptions {
           enabled: enabled,
           name: name.isEmpty ? 'MiMo TTS' : name,
           apiKey: (json['apiKey'] ?? '').toString(),
-          baseUrl: (json['baseUrl'] ?? 'https://api.xiaomimimo.com/v1').toString(),
+          baseUrl: (json['baseUrl'] ?? 'https://api.xiaomimimo.com/v1')
+              .toString(),
           model: (json['model'] ?? 'mimo-v2-tts').toString(),
           voice: (json['voice'] ?? 'mimo_default').toString(),
         );
@@ -312,12 +313,7 @@ class NetworkTtsService {
             cancelled,
           );
         case NetworkTtsKind.mimo:
-          return _mimoSpeech(
-            options as MimoTtsOptions,
-            text,
-            c,
-            cancelled,
-          );
+          return _mimoSpeech(options as MimoTtsOptions, text, c, cancelled);
       }
     } finally {
       if (client == null) {
@@ -588,10 +584,7 @@ class NetworkTtsService {
       'messages': [
         {'role': 'assistant', 'content': text},
       ],
-      'audio': {
-        'format': 'wav',
-        'voice': opt.voice,
-      },
+      'audio': {'format': 'wav', 'voice': opt.voice},
     });
     final req = http.Request('POST', uri)
       ..headers['Authorization'] = 'Bearer ${opt.apiKey}'

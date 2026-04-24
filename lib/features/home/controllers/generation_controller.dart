@@ -135,6 +135,21 @@ class GenerationController {
     );
   }
 
+  Map<String, dynamic> buildMcpDiagnostics(
+    SettingsProvider settings,
+    Assistant? assistant,
+    String providerKey,
+    String modelId,
+  ) {
+    return toolHandlerService.buildMcpDiagnostics(
+      settings,
+      assistant,
+      providerKey,
+      modelId,
+      isToolModel: isToolModel,
+    );
+  }
+
   /// Build tool call handler function.
   /// Delegates to ToolHandlerService.buildToolCallHandler.
   Future<String> Function(String, Map<String, dynamic>)? buildToolCallHandler(

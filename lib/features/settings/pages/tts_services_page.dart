@@ -1003,9 +1003,7 @@ Future<TtsServiceOptions?> _showNetworkTtsSheet(
                             kind = NetworkTtsKind.elevenlabs;
                           }
                           if (picked ==
-                              networkTtsKindDisplayName(
-                                NetworkTtsKind.mimo,
-                              )) {
+                              networkTtsKindDisplayName(NetworkTtsKind.mimo)) {
                             kind = NetworkTtsKind.mimo;
                           }
                           (ctx as Element).markNeedsBuild();
@@ -1062,7 +1060,6 @@ Future<TtsServiceOptions?> _showNetworkTtsSheet(
                           hint: '1.0',
                         ),
                       ],
-
                     ],
                   );
                 },

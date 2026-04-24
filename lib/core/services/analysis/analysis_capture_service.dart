@@ -251,6 +251,7 @@ class AnalysisCaptureService {
     if (normalized.length <= maxLength) return normalized;
     return '${normalized.substring(0, maxLength)}...';
   }
+
   static bool _shouldAttachBodyMetadata(String providerKey) {
     final kind = ProviderConfig.classify(providerKey);
     return kind == ProviderKind.openai;

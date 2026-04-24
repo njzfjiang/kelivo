@@ -307,6 +307,111 @@ ON CONFLICT(session_id) DO UPDATE SET
     });
   }
 
+  Future<int> insertSummaryVersion({
+    required String sessionId,
+    required String assistantId,
+    required String createdAt,
+    required int sourceFromMessageCount,
+    required int sourceToMessageCount,
+    required String summaryText,
+    String? previousSummaryText,
+    String? inputExcerpt,
+    Object? promptPayload,
+    String? providerKey,
+    String? modelId,
+  }) {
+    return _enqueue(() async {
+      final db = await _ensureDb();
+      db.execute(
+        '''
+INSERT INTO summary_versions(
+  session_id,
+  assistant_id,
+  created_at,
+  source_from_message_count,
+  source_to_message_count,
+  summary_text,
+  previous_summary_text,
+  input_excerpt,
+  prompt_json,
+  provider_key,
+  model_id
+)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+''',
+        [
+          sessionId,
+          assistantId,
+          createdAt,
+          sourceFromMessageCount,
+          sourceToMessageCount,
+          summaryText,
+          previousSummaryText,
+          inputExcerpt,
+          encodeAnalysisJson(promptPayload),
+          providerKey,
+          modelId,
+        ],
+      );
+      return db.lastInsertRowId;
+    });
+  }
+
+  Future<int> insertMemorySuggestion({
+    required String sessionId,
+    required String assistantId,
+    required String createdAt,
+    required String candidateText,
+    int? sourceSummaryVersionId,
+    String? sourceTurnId,
+    String? reason,
+    double? confidence,
+    String status = 'pending',
+    String? reviewNote,
+    String? acceptedMemoryId,
+    Object? payload,
+  }) {
+    return _enqueue(() async {
+      final db = await _ensureDb();
+      db.execute(
+        '''
+INSERT INTO memory_suggestions(
+  session_id,
+  assistant_id,
+  created_at,
+  updated_at,
+  source_summary_version_id,
+  source_turn_id,
+  candidate_text,
+  reason,
+  confidence,
+  status,
+  review_note,
+  accepted_memory_id,
+  payload_json
+)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+''',
+        [
+          sessionId,
+          assistantId,
+          createdAt,
+          createdAt,
+          sourceSummaryVersionId,
+          sourceTurnId,
+          candidateText,
+          reason,
+          confidence,
+          status,
+          reviewNote,
+          acceptedMemoryId,
+          encodeAnalysisJson(payload),
+        ],
+      );
+      return db.lastInsertRowId;
+    });
+  }
+
   Future<Map<String, dynamic>?> getRollingSummary(String sessionId) {
     return _enqueue(() async {
       final db = await _ensureDb();

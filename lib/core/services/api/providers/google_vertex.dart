@@ -368,9 +368,9 @@ Stream<ChatStreamChunk> _sendGoogleVertexClaudeStream({
             'type': (effectiveThinkingBudget == 0)
                 ? 'disabled'
                 : (effectiveThinkingBudget != null &&
-                        effectiveThinkingBudget > 0)
-                    ? 'enabled'
-                    : 'disabled',
+                      effectiveThinkingBudget > 0)
+                ? 'enabled'
+                : 'disabled',
             if (effectiveThinkingBudget != null && effectiveThinkingBudget > 0)
               'budget_tokens': effectiveThinkingBudget,
           },

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data' as typed_data;
 
 import 'analysis_protocol.dart';
 import 'proxy_analysis_store.dart';
@@ -111,9 +112,11 @@ class KelivoProxyServer {
     }
 
     try {
+      final upstreamUri = _resolveUpstreamUri(request.uri);
+      stdout.writeln('[KelivoProxy] upstream ${request.method} $upstreamUri');
       final upstreamRequest = await _client.openUrl(
         request.method,
-        _resolveUpstreamUri(request.uri),
+        upstreamUri,
       );
       upstreamHeaders.forEach(upstreamRequest.headers.set);
       if (parsed.forwardBodyBytes.isNotEmpty) {
@@ -177,7 +180,8 @@ class KelivoProxyServer {
       }
     } catch (e) {
       if (turnId != null) {
-        final isCancelled = e is HttpException &&
+        final isCancelled =
+            e is HttpException &&
             e.message.toLowerCase().contains('connection closed');
         await _store.updateTurn(
           ProxyTurnUpdate(
@@ -208,7 +212,7 @@ class KelivoProxyServer {
     required Map<String, String> responseHeaders,
     required DateTime startedAt,
   }) async {
-    final rawBuffer = BytesBuilder(copy: false);
+    final rawBuffer = typed_data.BytesBuilder(copy: false);
     final parser = _SseAccumulator();
     try {
       await for (final chunk in upstreamResponse) {
@@ -252,9 +256,8 @@ class KelivoProxyServer {
       }
     } catch (e) {
       if (turnId != null) {
-        final isCancelled = e is HttpException ||
-            e is SocketException ||
-            e is StateError;
+        final isCancelled =
+            e is HttpException || e is SocketException || e is StateError;
         await _store.updateTurn(
           ProxyTurnUpdate(
             turnId: turnId,
@@ -302,15 +305,17 @@ class KelivoProxyServer {
   }
 
   static Future<List<int>> _readRequestBytes(HttpRequest request) async {
-    final builder = BytesBuilder(copy: false);
+    final builder = typed_data.BytesBuilder(copy: false);
     await for (final chunk in request) {
       builder.add(chunk);
     }
     return builder.takeBytes();
   }
 
-  static Future<List<int>> _readResponseBytes(HttpClientResponse response) async {
-    final builder = BytesBuilder(copy: false);
+  static Future<List<int>> _readResponseBytes(
+    HttpClientResponse response,
+  ) async {
+    final builder = typed_data.BytesBuilder(copy: false);
     await for (final chunk in response) {
       builder.add(chunk);
     }
@@ -327,10 +332,7 @@ class KelivoProxyServer {
     return result;
   }
 
-  static void _copyResponseHeaders(
-    HttpHeaders from,
-    HttpHeaders to,
-  ) {
+  static void _copyResponseHeaders(HttpHeaders from, HttpHeaders to) {
     from.forEach((name, values) {
       final lower = name.toLowerCase();
       if (lower == HttpHeaders.transferEncodingHeader ||
@@ -504,7 +506,9 @@ class _ProxyMetadata {
         map['session_id']?.toString() ??
         '';
     if (turnId.isEmpty || sessionId.isEmpty) {
-      throw const FormatException('Kelivo analysis metadata requires turn_id and session_id.');
+      throw const FormatException(
+        'Kelivo analysis metadata requires turn_id and session_id.',
+      );
     }
     final injectLogRaw = map['inject_log'];
     final injectLog = <Map<String, dynamic>>[];
@@ -541,8 +545,6 @@ class _CompletedResponse {
     this.completionTokens,
     this.cachedTokens,
     this.totalTokens,
-    this.toolCalls,
-    this.toolResults,
   });
 
   final String? assistantText;
@@ -551,8 +553,8 @@ class _CompletedResponse {
   final int? completionTokens;
   final int? cachedTokens;
   final int? totalTokens;
-  final Object? toolCalls;
-  final Object? toolResults;
+  final Object? toolCalls = null;
+  final Object? toolResults = null;
 }
 
 class _SseAccumulator {
@@ -620,9 +622,7 @@ class _SseAccumulator {
       final usage = decoded['usage'];
       if (usage is Map) {
         promptTokens = KelivoProxyServer._asInt(usage['prompt_tokens']);
-        completionTokens = KelivoProxyServer._asInt(
-          usage['completion_tokens'],
-        );
+        completionTokens = KelivoProxyServer._asInt(usage['completion_tokens']);
         cachedTokens = KelivoProxyServer._asInt(usage['cached_tokens']);
         totalTokens = KelivoProxyServer._asInt(usage['total_tokens']);
       }

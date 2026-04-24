@@ -177,6 +177,85 @@ class ToolHandlerService {
     return toolDefs;
   }
 
+  Map<String, dynamic> buildMcpDiagnostics(
+    SettingsProvider settings,
+    Assistant? assistant,
+    String providerKey,
+    String modelId, {
+    required bool Function(String providerKey, String modelId) isToolModel,
+  }) {
+    final supportsTools = isToolModel(providerKey, modelId);
+    final mcp = contextProvider.read<McpProvider>();
+    final assistants = contextProvider.read<AssistantProvider>();
+    final currentAssistant = (assistant?.id != null)
+        ? assistants.getById(assistant!.id)
+        : assistants.currentAssistant;
+    final selectedServerIds =
+        (currentAssistant?.mcpServerIds ?? const <String>[]).toSet();
+    final connectedServers = mcp.connectedServers;
+    final connectedServerIds = connectedServers.map((s) => s.id).toSet();
+    final selectedConnectedServers = connectedServers
+        .where((s) => selectedServerIds.contains(s.id))
+        .toList(growable: false);
+    final availableTools = selectedConnectedServers
+        .expand((s) => s.tools)
+        .toList(growable: false);
+    final enabledTools = selectedConnectedServers
+        .expand((s) => s.tools.where((t) => t.enabled))
+        .toList(growable: false);
+
+    String reason;
+    if (!supportsTools) {
+      reason = 'model_not_tool_capable';
+    } else if (selectedServerIds.isEmpty) {
+      reason = 'assistant_has_no_selected_mcp_servers';
+    } else if (selectedConnectedServers.isEmpty) {
+      reason = 'selected_mcp_servers_not_connected';
+    } else if (availableTools.isEmpty) {
+      reason = 'selected_connected_servers_have_no_tools';
+    } else if (enabledTools.isEmpty) {
+      reason = 'selected_connected_server_tools_all_disabled';
+    } else {
+      reason = 'mcp_tools_available';
+    }
+
+    return {
+      'assistant_id': currentAssistant?.id,
+      'provider_key': providerKey,
+      'model_id': modelId,
+      'supports_tools': supportsTools,
+      'selected_assistant_mcp_server_ids': selectedServerIds.toList(),
+      'connected_mcp_server_ids': connectedServerIds.toList(),
+      'selected_connected_mcp_server_ids': selectedConnectedServers
+          .map((s) => s.id)
+          .toList(growable: false),
+      'selected_connected_mcp_servers': selectedConnectedServers
+          .map(
+            (s) => {
+              'id': s.id,
+              'name': s.name,
+              'enabled': s.enabled,
+              'status': mcp.statusFor(s.id).name,
+              'tool_count': s.tools.length,
+              'enabled_tool_count': s.tools.where((t) => t.enabled).length,
+              'tool_names': s.tools.map((t) => t.name).toList(growable: false),
+              'enabled_tool_names': s.tools
+                  .where((t) => t.enabled)
+                  .map((t) => t.name)
+                  .toList(growable: false),
+            },
+          )
+          .toList(growable: false),
+      'available_mcp_tool_names': availableTools
+          .map((t) => t.name)
+          .toList(growable: false),
+      'enabled_mcp_tool_names': enabledTools
+          .map((t) => t.name)
+          .toList(growable: false),
+      'reason': reason,
+    };
+  }
+
   /// Build memory tool definitions (create/edit/delete).
   List<Map<String, dynamic>> _buildMemoryToolDefinitions() {
     return [

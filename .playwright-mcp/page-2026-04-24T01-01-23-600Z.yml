@@ -1,0 +1,172 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - link "典津 - 全球汉籍影像开放集成" [ref=e7] [cursor=pointer]:
+            - /url: /
+            - img "典津 - 全球汉籍影像开放集成" [ref=e8]
+          - navigation [ref=e9]:
+            - link "全球检索" [ref=e10] [cursor=pointer]:
+              - /url: /
+              - img [ref=e11]
+              - generic [ref=e14]: 全球检索
+            - link "智能编目 Demo" [ref=e15] [cursor=pointer]:
+              - /url: /category-browse
+              - img [ref=e16]
+              - generic [ref=e21]: 智能编目
+              - generic [ref=e22]: Demo
+            - link "专题子库" [ref=e23] [cursor=pointer]:
+              - /url: /collections
+              - img [ref=e24]
+              - generic [ref=e26]: 专题子库
+            - generic [ref=e28] [cursor=pointer]:
+              - img [ref=e29]
+              - generic [ref=e31]: 关于
+              - img [ref=e32]
+        - link "登录" [ref=e36] [cursor=pointer]:
+          - /url: /login
+    - generic [ref=e39]:
+      - generic [ref=e40]:
+        - paragraph [ref=e41]: 数字文献学核心基础设施
+        - heading "全球汉籍影像开放集成" [level=1] [ref=e42]:
+          - text: 全球汉籍影像开放集成
+          - img [ref=e43]:
+            - generic [ref=e45]: AI
+            - generic [ref=e46]: 驅動版
+      - generic [ref=e47]:
+        - generic [ref=e48]:
+          - button "全部数据源" [ref=e49] [cursor=pointer]:
+            - img [ref=e50]
+            - generic [ref=e52]: 全部数据源
+            - img [ref=e53]
+          - textbox "输入书名、作者或版本" [ref=e56]
+          - button [ref=e58] [cursor=pointer]:
+            - img [ref=e59]
+          - button "请选择至少一个数据源" [disabled] [ref=e60]:
+            - img [ref=e61]
+        - generic [ref=e64]:
+          - img [ref=e65]
+          - generic [ref=e68]: 【动态】系统新增数据源：过云楼-凤凰集团（2026/4/23）
+          - button [ref=e69] [cursor=pointer]:
+            - img [ref=e70]
+    - generic [ref=e73]:
+      - heading "分布统计" [level=2] [ref=e75]
+      - generic [ref=e76]:
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - button "按地区" [ref=e80] [cursor=pointer]:
+              - img [ref=e81]
+              - generic [ref=e86]: 按地区
+            - button "按机构" [ref=e87] [cursor=pointer]:
+              - img [ref=e88]
+              - generic [ref=e91]: 按机构
+          - generic [ref=e93]:
+            - generic [ref=e94]: 总记录数
+            - generic [ref=e95]: 748,754
+          - generic [ref=e96]:
+            - button "收藏量前十地区":
+              - generic: 收藏量前十地区
+            - generic [ref=e97]:
+              - generic [ref=e99]:
+                - generic [ref=e100]:
+                  - generic [ref=e101]: "1"
+                  - generic [ref=e102]: 中国大陆
+                - generic [ref=e103]: 335,084
+              - generic [ref=e107]:
+                - generic [ref=e108]:
+                  - generic [ref=e109]: "2"
+                  - generic [ref=e110]: 日本
+                - generic [ref=e111]: 125,491
+              - generic [ref=e115]:
+                - generic [ref=e116]:
+                  - generic [ref=e117]: "3"
+                  - generic [ref=e118]: 韩国
+                - generic [ref=e119]: 105,384
+              - generic [ref=e123]:
+                - generic [ref=e124]:
+                  - generic [ref=e125]: "4"
+                  - generic [ref=e126]: 美国
+                - generic [ref=e127]: 97,947
+              - generic [ref=e131]:
+                - generic [ref=e132]:
+                  - generic [ref=e133]: "5"
+                  - generic [ref=e134]: 英国
+                - generic [ref=e135]: 50,291
+              - generic [ref=e139]:
+                - generic [ref=e140]:
+                  - generic [ref=e141]: "6"
+                  - generic [ref=e142]: 中国台湾
+                - generic [ref=e143]: 22,819
+              - generic [ref=e147]:
+                - generic [ref=e148]:
+                  - generic [ref=e149]: "7"
+                  - generic [ref=e150]: 德国
+                - generic [ref=e151]: 4,342
+              - generic [ref=e155]:
+                - generic [ref=e156]:
+                  - generic [ref=e157]: "8"
+                  - generic [ref=e158]: 中国香港
+                - generic [ref=e159]: 2,105
+              - generic [ref=e163]:
+                - generic [ref=e164]:
+                  - generic [ref=e165]: "9"
+                  - generic [ref=e166]: 越南
+                - generic [ref=e167]: 1,454
+              - generic [ref=e171]:
+                - generic [ref=e172]:
+                  - generic [ref=e173]: "10"
+                  - generic [ref=e174]: 加拿大
+                - generic [ref=e175]: 1,266
+        - generic [ref=e185]:
+          - button "3D地球" [disabled] [ref=e186]:
+            - img [ref=e187]
+            - generic [ref=e190]: 3D地球
+          - button "平面地图" [ref=e191] [cursor=pointer]:
+            - img [ref=e192]
+            - generic [ref=e194]: 平面地图
+    - generic [ref=e198]:
+      - heading "实现古籍数字化资源汇聚共享" [level=2] [ref=e199]
+      - paragraph [ref=e200]: ——《关于推进新时代古籍工作的意见》
+      - link "立即登录" [ref=e202] [cursor=pointer]:
+        - /url: /login
+        - generic [ref=e203]: 立即登录
+        - img [ref=e204]
+    - contentinfo [ref=e207]:
+      - generic [ref=e208]:
+        - generic [ref=e209]:
+          - generic [ref=e210]:
+            - img "典津 - 全球汉籍影像开放集成" [ref=e211]
+            - paragraph [ref=e212]: 【主办单位】 清华大学-同方知网数字人文联合研究中心 【中心主任】 刘石 教授（清华大学）
+          - generic [ref=e213]:
+            - heading "项目团队" [level=3] [ref=e214]
+            - generic [ref=e215]:
+              - generic [ref=e216]:
+                - paragraph [ref=e217]: 项目领导
+                - paragraph [ref=e218]: 李飞跃 教授（清华大学）
+              - generic [ref=e219]:
+                - paragraph [ref=e220]: 项目经理
+                - paragraph [ref=e221]: 唐宸 副教授（清华大学）
+          - generic [ref=e222]:
+            - heading "快速链接" [level=3] [ref=e223]
+            - list [ref=e224]:
+              - listitem [ref=e225]:
+                - link "首页" [ref=e226] [cursor=pointer]:
+                  - /url: /
+              - listitem [ref=e227]:
+                - link "搜索" [ref=e228] [cursor=pointer]:
+                  - /url: /search
+              - listitem [ref=e229]:
+                - link "登录" [ref=e230] [cursor=pointer]:
+                  - /url: /login
+          - generic [ref=e231]:
+            - heading "联系我们" [level=3] [ref=e232]
+            - generic [ref=e234]:
+              - img
+              - generic [ref=e237]:
+                - paragraph [ref=e238]: 意见反馈
+                - link "tangchen@mail.tsinghua.edu.cn" [ref=e239] [cursor=pointer]:
+                  - /url: mailto:tangchen@mail.tsinghua.edu.cn
+        - paragraph [ref=e242]: © 2023-2026 典津 - 全球汉籍影像开放集成系统
+  - region "Notifications alt+T":
+    - list

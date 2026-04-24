@@ -28,6 +28,8 @@ void main(List<String> args) {
     final showStats =
         options.containsKey('stats') || options['mode']?.trim() == 'stats';
     final showRolling = options.containsKey('rolling');
+    final showSummaryVersions = options.containsKey('summary-versions');
+    final showMemorySuggestions = options.containsKey('memory-suggestions');
 
     if (turnId != null && turnId.trim().isNotEmpty) {
       _printTurnDetails(
@@ -58,6 +60,26 @@ void main(List<String> args) {
         db,
         normalizedSessionId,
         excerptLength: int.tryParse(options['excerpt'] ?? '400') ?? 400,
+      );
+      return;
+    }
+
+    if (showSummaryVersions) {
+      _printSummaryVersions(
+        db,
+        recent: recent,
+        sessionId: sessionId?.trim().isEmpty == true ? null : sessionId?.trim(),
+        excerptLength: int.tryParse(options['excerpt'] ?? '220') ?? 220,
+      );
+      return;
+    }
+
+    if (showMemorySuggestions) {
+      _printMemorySuggestions(
+        db,
+        recent: recent,
+        sessionId: sessionId?.trim().isEmpty == true ? null : sessionId?.trim(),
+        excerptLength: int.tryParse(options['excerpt'] ?? '220') ?? 220,
       );
       return;
     }
@@ -95,6 +117,12 @@ void _printUsage() {
   stdout.writeln(
     '  dart run bin/analysis_inspect.dart --app-db --rolling --session-id=<session_id>',
   );
+  stdout.writeln(
+    '  dart run bin/analysis_inspect.dart --app-db --summary-versions --session-id=<session_id>',
+  );
+  stdout.writeln(
+    '  dart run bin/analysis_inspect.dart --app-db --memory-suggestions --session-id=<session_id>',
+  );
   stdout.writeln('');
   stdout.writeln('Options:');
   stdout.writeln('  --db-path=PATH      SQLite file path');
@@ -111,6 +139,8 @@ void _printUsage() {
   stdout.writeln(
     '  --rolling           Show latest rolling summary for one session',
   );
+  stdout.writeln('  --summary-versions  Show rolling summary version history');
+  stdout.writeln('  --memory-suggestions Show memory suggestion rows');
   stdout.writeln('  --excerpt=N         Excerpt length, default 90/220');
   stdout.writeln('  --help              Show this message');
 }
@@ -180,6 +210,130 @@ WHERE session_id = ?
   stdout.writeln(
     _block(_excerpt((row['summary_text'] ?? '').toString(), excerptLength)),
   );
+}
+
+void _printSummaryVersions(
+  Database db, {
+  required int recent,
+  required String? sessionId,
+  required int excerptLength,
+}) {
+  if (!_tableExists(db, 'summary_versions')) {
+    stdout.writeln('Table not found: summary_versions');
+    return;
+  }
+
+  final params = <Object?>[];
+  final whereClause = sessionId == null ? '' : 'WHERE session_id = ?';
+  if (sessionId != null) params.add(sessionId);
+  params.add(recent);
+
+  final rows = db.select('''
+SELECT id, session_id, assistant_id, created_at, source_from_message_count,
+  source_to_message_count, provider_key, model_id, summary_text, input_excerpt
+FROM summary_versions
+$whereClause
+ORDER BY created_at DESC, id DESC
+LIMIT ?
+''', params);
+
+  if (rows.isEmpty) {
+    stdout.writeln(
+      sessionId == null
+          ? 'No summary versions found.'
+          : 'No summary versions found for session: $sessionId',
+    );
+    return;
+  }
+
+  stdout.writeln(
+    sessionId == null
+        ? 'Summary versions ($recent)'
+        : 'Summary versions ($recent) for session $sessionId',
+  );
+  stdout.writeln('');
+  for (final row in rows) {
+    stdout.writeln(
+      '#${row['id']} ts=${row['created_at']} messages=${row['source_from_message_count']}..${row['source_to_message_count']}',
+    );
+    stdout.writeln(
+      'session_id=${row['session_id']} assistant_id=${row['assistant_id'] ?? '-'} provider=${row['provider_key'] ?? '-'} model=${row['model_id'] ?? '-'}',
+    );
+    stdout.writeln(
+      'summary: ${_excerpt((row['summary_text'] ?? '').toString(), excerptLength)}',
+    );
+    final inputExcerpt = (row['input_excerpt'] ?? '').toString().trim();
+    if (inputExcerpt.isNotEmpty) {
+      stdout.writeln('input: ${_excerpt(inputExcerpt, excerptLength)}');
+    }
+    stdout.writeln('');
+  }
+}
+
+void _printMemorySuggestions(
+  Database db, {
+  required int recent,
+  required String? sessionId,
+  required int excerptLength,
+}) {
+  if (!_tableExists(db, 'memory_suggestions')) {
+    stdout.writeln('Table not found: memory_suggestions');
+    return;
+  }
+
+  final params = <Object?>[];
+  final whereClause = sessionId == null ? '' : 'WHERE session_id = ?';
+  if (sessionId != null) params.add(sessionId);
+  params.add(recent);
+
+  final rows = db.select('''
+SELECT id, session_id, assistant_id, created_at, source_summary_version_id,
+  source_turn_id, candidate_text, reason, confidence, status, review_note,
+  accepted_memory_id
+FROM memory_suggestions
+$whereClause
+ORDER BY created_at DESC, id DESC
+LIMIT ?
+''', params);
+
+  if (rows.isEmpty) {
+    stdout.writeln(
+      sessionId == null
+          ? 'No memory suggestions found.'
+          : 'No memory suggestions found for session: $sessionId',
+    );
+    return;
+  }
+
+  stdout.writeln(
+    sessionId == null
+        ? 'Memory suggestions ($recent)'
+        : 'Memory suggestions ($recent) for session $sessionId',
+  );
+  stdout.writeln('');
+  for (final row in rows) {
+    stdout.writeln(
+      '#${row['id']} [${row['status']}] ts=${row['created_at']} confidence=${row['confidence'] ?? '-'}',
+    );
+    stdout.writeln(
+      'session_id=${row['session_id']} assistant_id=${row['assistant_id'] ?? '-'} summary_version=${row['source_summary_version_id'] ?? '-'} turn=${row['source_turn_id'] ?? '-'}',
+    );
+    stdout.writeln(
+      'candidate: ${_excerpt((row['candidate_text'] ?? '').toString(), excerptLength)}',
+    );
+    final reason = (row['reason'] ?? '').toString().trim();
+    if (reason.isNotEmpty) {
+      stdout.writeln('reason: ${_excerpt(reason, excerptLength)}');
+    }
+    final reviewNote = (row['review_note'] ?? '').toString().trim();
+    if (reviewNote.isNotEmpty) {
+      stdout.writeln('review: ${_excerpt(reviewNote, excerptLength)}');
+    }
+    if (row['accepted_memory_id'] != null) {
+      stdout.writeln('accepted_memory_id=${row['accepted_memory_id']}');
+    }
+    stdout.writeln('');
+  }
 }
 
 Map<String, String> _parseArgs(List<String> args) {
@@ -402,6 +556,61 @@ ORDER BY ts, event_id
     final contextLimit = injectSnapshot['context_limit'];
     if (contextLimit != null) {
       stdout.writeln(_formatKeyValueLine('context_limit', contextLimit));
+    }
+    final toolDefinitions = injectSnapshot['tool_definitions'];
+    if (toolDefinitions is List) {
+      final toolNames = toolDefinitions
+          .whereType<Map>()
+          .map((tool) => (tool['name'] ?? '').toString())
+          .where((name) => name.isNotEmpty)
+          .toList(growable: false);
+      stdout.writeln(
+        _formatKeyValueLine('tool_definition_count', toolDefinitions.length),
+      );
+      if (toolNames.isNotEmpty) {
+        stdout.writeln(_formatKeyValueLine('tool_names', toolNames.join(', ')));
+      }
+    }
+    final mcpDiagnostics = _mapFromDynamic(injectSnapshot['mcp_diagnostics']);
+    if (mcpDiagnostics != null && mcpDiagnostics.isNotEmpty) {
+      stdout.writeln('');
+      stdout.writeln('MCP diagnostics');
+      stdout.writeln(_formatKeyValueLine('reason', mcpDiagnostics['reason']));
+      stdout.writeln(
+        _formatKeyValueLine('supports_tools', mcpDiagnostics['supports_tools']),
+      );
+      stdout.writeln(
+        _formatKeyValueLine(
+          'selected_assistant_mcp_server_ids',
+          _joinDynamicList(mcpDiagnostics['selected_assistant_mcp_server_ids']),
+        ),
+      );
+      stdout.writeln(
+        _formatKeyValueLine(
+          'connected_mcp_server_ids',
+          _joinDynamicList(mcpDiagnostics['connected_mcp_server_ids']),
+        ),
+      );
+      stdout.writeln(
+        _formatKeyValueLine(
+          'selected_connected_mcp_server_ids',
+          _joinDynamicList(mcpDiagnostics['selected_connected_mcp_server_ids']),
+        ),
+      );
+      stdout.writeln(
+        _formatKeyValueLine(
+          'enabled_mcp_tool_names',
+          _joinDynamicList(mcpDiagnostics['enabled_mcp_tool_names']),
+        ),
+      );
+      final selectedServers = mcpDiagnostics['selected_connected_mcp_servers'];
+      if (selectedServers is List && selectedServers.isNotEmpty) {
+        for (final server in selectedServers.whereType<Map>()) {
+          stdout.writeln(
+            '  server=${server['id'] ?? '-'} name=${server['name'] ?? '-'} status=${server['status'] ?? '-'} enabled_tools=${_joinDynamicList(server['enabled_tool_names'])}',
+          );
+        }
+      }
     }
     stdout.writeln('');
   }
@@ -673,4 +882,21 @@ LIMIT 1
     [tableName],
   );
   return rows.isNotEmpty;
+}
+
+Map<String, dynamic>? _mapFromDynamic(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    return value.map((key, val) => MapEntry(key.toString(), val));
+  }
+  return null;
+}
+
+String _joinDynamicList(Object? value) {
+  if (value is! List) return '-';
+  final items = value
+      .map((item) => item?.toString() ?? '')
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
+  return items.isEmpty ? '-' : items.join(', ');
 }

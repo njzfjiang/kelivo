@@ -15,6 +15,9 @@ class RollingSummaryService {
   static const String defaultRollingSummaryPrompt = '''
 I will give you the previous rolling summary and recent messages from the same conversation.
 Update the rolling summary so the assistant can continue the current work after context truncation.
+只输出四段：Now / Key context / Protocols / Next。
+优先保留：当前状态（HP/身体/情绪）、最关键的协议护栏、下一步最小动作。
+写得具体、短、稳定，不要引入新观点。
 
 Requirements:
 1. Use the same language as the conversation
@@ -95,13 +98,39 @@ Requirements:
       )).trim();
       if (summary.isEmpty) return;
       final now = DateTime.now().toIso8601String();
+      final assistantId = assistant?.id ?? convo.assistantId ?? '';
+      final sourceFromMessageCount = lastCount + 1;
       await _store.upsertRollingSummary(
         sessionId: conversationId,
-        assistantId: assistant?.id ?? convo.assistantId ?? '',
+        assistantId: assistantId,
         summaryText: summary,
         sourceLastMessageCount: messages.length,
         now: now,
       );
+      try {
+        await _store.insertSummaryVersion(
+          sessionId: conversationId,
+          assistantId: assistantId,
+          createdAt: now,
+          sourceFromMessageCount: sourceFromMessageCount,
+          sourceToMessageCount: messages.length,
+          summaryText: summary,
+          previousSummaryText: previousSummary,
+          inputExcerpt: _excerpt(transcript, maxChars: 1200),
+          promptPayload: {
+            'kind': 'rolling_summary',
+            'trigger_message_count': triggerCount,
+            'source_from_message_count': sourceFromMessageCount,
+            'source_to_message_count': messages.length,
+            'delta_message_count': deltaMessages.length,
+            'prompt': prompt,
+          },
+          providerKey: providerKey,
+          modelId: modelId,
+        );
+      } catch (_) {
+        // History is useful for analysis, but must not block latest-summary continuity.
+      }
     } catch (_) {
       // Keep previous rolling summary on failure.
     }
@@ -133,5 +162,11 @@ Requirements:
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value);
     return null;
+  }
+
+  static String _excerpt(String value, {required int maxChars}) {
+    final normalized = value.trim();
+    if (normalized.length <= maxChars) return normalized;
+    return normalized.substring(normalized.length - maxChars);
   }
 }

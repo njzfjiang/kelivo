@@ -93,7 +93,7 @@ class StreamableHttpClientTransport implements ClientTransport {
     int? maxConcurrentRequests,
     bool? useHttp2,
     http.Client? httpClient,
-    bool terminateOnClose = true,  // Default: true for backward compatibility
+    bool terminateOnClose = true, // Default: true for backward compatibility
   }) async {
     final config = StreamableHttpTransportConfig(
       baseUrl: baseUrl,
@@ -269,9 +269,7 @@ class StreamableHttpClientTransport implements ClientTransport {
       }
 
       if (response.statusCode >= 400) {
-        throw McpError(
-          'HTTP ${response.statusCode}: ${response.reasonPhrase}',
-        );
+        throw McpError('HTTP ${response.statusCode}: ${response.reasonPhrase}');
       }
 
       // Check content type
@@ -356,14 +354,14 @@ class StreamableHttpClientTransport implements ClientTransport {
   Future<void> _establishGetStream() async {
     try {
       final uri = Uri.parse(config.baseUrl);
-      
+
       // Set up headers
       final headers = <String, String>{
         'Accept': 'text/event-stream',
         'Cache-Control': 'no-cache',
         ...config.headers,
       };
-      
+
       if (_sessionId != null) {
         headers['MCP-Session-Id'] = _sessionId!;
       }
@@ -380,7 +378,7 @@ class StreamableHttpClientTransport implements ClientTransport {
 
       // Create EventSource instance
       _eventSource = EventSource();
-      
+
       // Connect to SSE endpoint
       await _eventSource!.connect(
         uri.toString(),
@@ -413,7 +411,6 @@ class StreamableHttpClientTransport implements ClientTransport {
       rethrow;
     }
   }
-
 
   @override
   void close() {

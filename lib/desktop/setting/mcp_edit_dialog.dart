@@ -598,8 +598,7 @@ class _DesktopMcpEditDialogState extends State<_DesktopMcpEditDialog>
                         children: [
                           Text(
                             tool.name,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                           if ((tool.description ?? '').isNotEmpty) ...[
                             const SizedBox(height: 4),
@@ -607,8 +606,7 @@ class _DesktopMcpEditDialogState extends State<_DesktopMcpEditDialog>
                               tool.description!,
                               style: TextStyle(
                                 fontSize: 12,
-                                color:
-                                    cs.onSurface.withValues(alpha: 0.7),
+                                color: cs.onSurface.withValues(alpha: 0.7),
                               ),
                             ),
                           ],
@@ -620,26 +618,20 @@ class _DesktopMcpEditDialogState extends State<_DesktopMcpEditDialog>
                               children: tool.params.map((p) {
                                 final color = p.required
                                     ? cs.primary
-                                    : cs.onSurface
-                                          .withValues(alpha: 0.5);
+                                    : cs.onSurface.withValues(alpha: 0.5);
                                 final bg = p.required
-                                    ? cs.primary
-                                          .withValues(alpha: 0.12)
-                                    : cs.onSurface
-                                          .withValues(alpha: 0.06);
+                                    ? cs.primary.withValues(alpha: 0.12)
+                                    : cs.onSurface.withValues(alpha: 0.06);
                                 return Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(
+                                  padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
                                     vertical: 2,
                                   ),
                                   decoration: BoxDecoration(
                                     color: bg,
-                                    borderRadius:
-                                        BorderRadius.circular(999),
+                                    borderRadius: BorderRadius.circular(999),
                                     border: Border.all(
-                                      color: color
-                                          .withValues(alpha: 0.5),
+                                      color: color.withValues(alpha: 0.5),
                                     ),
                                   ),
                                   child: Text(
@@ -659,12 +651,9 @@ class _DesktopMcpEditDialogState extends State<_DesktopMcpEditDialog>
                     ),
                     IosSwitch(
                       value: tool.enabled,
-                      onChanged: (v) =>
-                          context.read<McpProvider>().setToolEnabled(
-                                server!.id,
-                                tool.name,
-                                v,
-                              ),
+                      onChanged: (v) => context
+                          .read<McpProvider>()
+                          .setToolEnabled(server!.id, tool.name, v),
                     ),
                   ],
                 ),
@@ -687,8 +676,7 @@ class _DesktopMcpEditDialogState extends State<_DesktopMcpEditDialog>
                             l10n.mcpToolNeedsApproval,
                             style: TextStyle(
                               fontSize: 12,
-                              color: cs.onSurface
-                                  .withValues(alpha: 0.6),
+                              color: cs.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         ),
@@ -696,11 +684,7 @@ class _DesktopMcpEditDialogState extends State<_DesktopMcpEditDialog>
                           value: tool.needsApproval,
                           onChanged: (v) => context
                               .read<McpProvider>()
-                              .setToolNeedsApproval(
-                                server!.id,
-                                tool.name,
-                                v,
-                              ),
+                              .setToolNeedsApproval(server!.id, tool.name, v),
                         ),
                       ],
                     ),

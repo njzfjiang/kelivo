@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:Kelivo/core/providers/settings_provider.dart';
-import 'package:Kelivo/core/services/analysis/analysis_capture_service.dart';
+import 'package:Kelivo/core/services/analysis/analysis_protocol.dart';
 import 'package:Kelivo/core/services/api/chat_api_service.dart';
 
 ProviderConfig _openAiConfig(String baseUrl) {

@@ -69,7 +69,8 @@ Proxy 侧负责：
 启动示例：
 
 ```bash
-dart run bin/kelivo_proxy.dart --upstream=https://api.openai.com --port=8787
+dart run bin/kelivo_proxy.dart --upstream=https://api.openai.com/v1
+ --port=8787
 ```
 
 如果上游是 OpenAI 官方 API，Kelivo provider 的 Base URL 应使用本地 proxy：
@@ -120,6 +121,8 @@ dart run bin/analysis_inspect.dart --db-path=proxy_analysis_v1.db --recent=10
 dart run bin/analysis_inspect.dart --db-path=proxy_analysis_v1.db --stats --recent=50
 dart run bin/analysis_inspect.dart --db-path=proxy_analysis_v1.db --turn-id=<turn_id>
 dart run bin/analysis_inspect.dart --app-db --rolling --session-id=<session_id>
+dart run bin/analysis_inspect.dart --app-db --summary-versions --session-id=<session_id>
+dart run bin/analysis_inspect.dart --app-db --memory-suggestions --session-id=<session_id>
 ```
 
 `--app-db` 会自动指向 app 侧分析库。Windows 下等价于：
@@ -188,17 +191,18 @@ Rolling summary 是当前会话连续性功能，不是 cross-chat summary。
 - 可随策略调整覆盖
 - 主要用于注入，不用于审计
 
-### 2. 未来 `summary_versions`
+### 2. `summary_versions`
 
 用途：保存每一版 summary 的历史证据，用于分析和 benchmark。
 
-建议字段：
+当前字段：
 
 ```sql
 summary_versions:
 id, session_id, assistant_id, created_at,
 source_from_message_count, source_to_message_count,
-summary_text, prompt_json, provider_key, model_id
+summary_text, previous_summary_text, input_excerpt,
+prompt_json, provider_key, model_id
 ```
 
 特点：
@@ -208,18 +212,26 @@ summary_text, prompt_json, provider_key, model_id
 - 可用于比较不同摘要策略
 - 可作为 memory suggestion 的输入来源之一
 
-### 3. 未来 `memory_suggestions`
+当前接入状态：
+
+- 每次 rolling summary 刷新时都会写入一条 `summary_versions`
+- `rolling_summaries` 仍然只保留 latest
+- memory suggestion 还不会自动生成
+
+### 3. `memory_suggestions`
 
 用途：保存从 summary 或 turn delta 中提炼出的长期记忆候选。
 
-建议字段：
+当前字段：
 
 ```sql
 memory_suggestions:
 id, session_id, assistant_id, created_at,
+updated_at,
 source_summary_version_id, source_turn_id,
 candidate_text, reason, confidence,
-status, review_note, accepted_memory_id
+status, review_note, accepted_memory_id,
+payload_json
 ```
 
 建议状态：
@@ -237,6 +249,13 @@ merged
 - 先作为候选项进入人工审计
 - accepted 后再写入现有 memory 系统
 - rejected/merged 也要保留，方便后续评估模型提议质量
+
+当前接入状态：
+
+- 表和基础写入接口已存在
+- 还没有自动 suggestion 生成器
+- 还没有人工审核 UI
+- 还不会自动写入现有 assistant memory
 
 ## 为什么 memory suggestion 应该 decouple
 
@@ -295,23 +314,71 @@ Proxy DB：
 
 ## 后续建议
 
+## 云 Proxy 与手机端不改代码的边界
+
+问题背景：
+
+- 桌面端可以运行修改后的 Kelivo，因此 app 侧 `AnalysisStore` 和 `RollingSummaryService` 能工作
+- 当前苹果手机端无法方便运行本地改代码后的 Kelivo
+- 如果手机端只把 Base URL 改成云 proxy，但 app 代码不变，就不会拥有新增的 app 侧 service
+
+关键结论：
+
+- 云 proxy 可以保存请求/响应，也可以做一套 proxy 侧 rolling summary
+- 但不改手机端代码时，proxy 拿不到 app 侧完整 `_kelivo_analysis_meta`
+- 因此 proxy 不能可靠知道 Kelivo 内部的 memory、world book、instruction、recent chat summary 等真实来源
+- Proxy 只能基于 OpenAI-compatible request body 里已经拼好的 `messages` 做反推和追加注入
+
+不改手机端代码时，云 proxy 至少需要解决两个问题：
+
+- Session 识别：每个请求必须能稳定归到同一个 conversation/session
+- 注入位置：proxy 必须能安全地把 rolling summary 追加到上游 request 的 system message
+
+可行方案从稳到险：
+
+- 最稳：手机端也升级 Kelivo，继续由 App 生成 `_kelivo_analysis_meta`
+- 次稳：如果当前手机端支持自定义 header/body，则手动加固定 `X-Kelivo-Conversation-Id` 或 body metadata
+- 可用但粗糙：云 proxy 用 API key、provider endpoint、客户端 IP、model 等组合推断 session
+- 不建议：完全不区分 session，只做全局 rolling summary，容易串聊天和串人格
+
+如果真的要云 proxy 维护 rolling summary，建议 proxy 侧新增一条独立链路：
+
+- 从 request body 的 `messages` 里提取最新 user message 和已有 system 上下文
+- 用云端 DB 的 `rolling_summaries` / `summary_versions` 维护 proxy-side summary
+- 在转发上游前，把 proxy-side rolling summary 注入到 system message
+- 完成响应后，用 request/response delta 刷新 proxy-side rolling summary
+- 所有 proxy 注入都写入 `inject_log.kind=proxy_rolling_summary`
+
+重要限制：
+
+- 这不是 app 侧真实注入快照
+- 这无法知道 world book 具体命中了哪条 entry
+- 这无法可靠知道 assistant memory 的真实来源 id
+- 如果 session 识别不稳，会有严重串上下文风险
+
+因此推荐路线：
+
+- 本地/桌面实验继续用 app 侧 service，数据最完整
+- 云 proxy 先做旁路采集和简单 proxy rolling summary
+- 等手机端能升级后，再恢复 App→Proxy metadata 协议作为主路径
+- 云 proxy 的 rolling summary 与 app rolling summary 应标记不同 source，不要混为一个事实来源
+
 短期：
 
 - 继续用阈值 3 观察 rolling summary 的连续性收益
 - 用 `analysis_inspect --app-db --rolling` 查看当前 summary
+- 用 `analysis_inspect --app-db --summary-versions` 查看 summary 版本历史
 - 用 `analysis_inspect --db-path=proxy_analysis_v1.db --stats` 看 turn 级注入统计
 
 中期：
 
-- 新增 `summary_versions`，每次 rolling summary 更新时 append 一版
 - 增加 inspect 命令查看 summary 版本时间线
 - 比较不同阈值下的 token 成本和回答连续性
+- 实现 memory suggestion 生成器，但只写入 `pending`
 
 长期：
 
-- 新增 `memory_suggestions`
 - 从 `summary_versions` 和高价值 turn delta 中提议长期 memory
 - 加入人工审核状态流
 - accepted 后再写入现有 assistant memory
 - 记录 rejected/merged 结果，用于评估 suggestion 模型质量
-

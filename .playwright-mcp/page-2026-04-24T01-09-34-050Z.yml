@@ -1,0 +1,95 @@
+- generic [ref=e3]:
+  - banner [ref=e5]:
+    - link [ref=e6] [cursor=pointer]:
+      - /url: /explore?channel_type=web_note_detail_r10
+      - img
+    - generic [ref=e7]:
+      - textbox [ref=e8]:
+        - /placeholder: 搜索小红书
+      - textbox "搜索小红书" [ref=e9]
+      - generic [ref=e10]:
+        - img [ref=e12]
+        - img [ref=e15] [cursor=pointer]
+    - button [ref=e21] [cursor=pointer]:
+      - img [ref=e23]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - link [ref=e34] [cursor=pointer]:
+            - /url: /user/profile/666dce3e000000000d025a37?channel_type=web_note_detail_r10&xsec_token=ABuPEKlkXrTjuYE8fubGJSabroKQ7OEEWb30FmoB4x9II%3D&xsec_source=pc_note
+            - img [ref=e35]
+          - link "奥森木" [ref=e36] [cursor=pointer]:
+            - /url: /user/profile/666dce3e000000000d025a37?channel_type=web_note_detail_r10&parent_page_channel_type=web_profile_board&xsec_token=ABuPEKlkXrTjuYE8fubGJSabroKQ7OEEWb30FmoB4x9II=&xsec_source=pc_note
+            - generic [ref=e37]: 奥森木
+        - button "关注" [ref=e39] [cursor=pointer]:
+          - generic [ref=e41]: 关注
+      - generic [ref=e44]:
+        - generic [ref=e46]:
+          - img [ref=e50]
+          - img [ref=e54]
+          - img [ref=e58]
+          - img [ref=e62]
+          - img [ref=e66]
+          - img [ref=e70]
+          - img [ref=e74]
+          - img [ref=e78]
+          - img [ref=e82]
+          - img [ref=e86]
+          - img [ref=e90]
+        - generic [ref=e91]: 1/9
+        - img [ref=e94]
+        - img [ref=e98] [cursor=pointer]
+      - generic [ref=e121]:
+        - generic [ref=e122]:
+          - generic [ref=e123]:
+            - generic [ref=e124]: OpenAI 发 GPT-5.5，完全解读
+            - generic [ref=e126]:
+              - text: OpenAI 今天发了 GPT-5.5 和 GPT-5.5 Pro，slogan 是 a new class of intelligence for real work。重点不是指标本身，而是他们愿意把"更聪明"和"更省"放在同一页——延迟持平 GPT-5.4，tokens 更省，benchmark 全线跃升。 四大能力维度都有硬数据。 agentic coding：Terminal-Bench 2.0 82.7% 是 SOTA（vs Opus 4.7 69.4% / Gemini 3.1 Pro 68.5%）。Expert-SWE（中位人工 20 小时任务）73.1%。Dan Shipper 说这是他用过第一个有 conceptual clarity 的编码模型；Pietro Schirano 一次合并带几百个 change 的分支到已大改 main，20 分钟完成。 knowledge work：GDPval 44 个职业 84.9%，OSWorld-Verified 78.7%，Tau2 Telecom 无 prompt tuning 98.0%。OpenAI 自己 85% 员工每周用 Codex；财务用它 review 24,771 份 K-1 税表 / 71,637 页，比去年快两周；GTM 自动化周报省 5-10 小时/周。 scientific research：GeneBench 和 BixBench 大幅领先，FrontierMath Tier 4 到 35.4% / Pro 39.6%。内部版 GPT-5.5 配自定义 harness 发现了一个关于 off-diagonal Ramsey number 的渐近新结果，经 Lean 验证——组合学里的结果罕见且技术困难。Jackson Lab 的 Derya Unutmaz 教授用 Pro 版分析 62 样本、近 28,000 基因的表达数据，说 would have taken my team months。波兰数学副教授 Bartosz Naskręcki 用 1 个 prompt 在 Codex 里 11 分钟做出代数几何 app。 工程亮点：GPT-5.5 和 NVIDIA GB200 / GB300 NVL72 共同设计、训练、服务。Codex 自己参与了服务它自己的基础设施的优化——分析数周生产流量，写 custom heuristic 替代原来的固定 chunks 负载均衡，token 生成速度 +20%。 长上下文和抽象推理跃升特别漂亮：Graphwalks BFS 1M 从 9.4% → 45.4%（约 5x）；MRCR 8-needle 512K-1M 从 36.6% → 74%（翻倍）；ARC-AGI-2 从 73.3% → 85%（明显领先 Opus 4.7 75.8 和 Gemini 3.1 Pro 77.1）。 可用性：ChatGPT 今天上线 Plus/Pro/Business/Enterprise，GPT-5.5 Pro 给 Pro/Business/Enterprise。Codex 有 400K 上下文窗口，Fast mode 1.5x 速度 2.5x 价格。API 即将上线：$5 / $30 per 1M tokens（input/output），Pro 版 $30 / $180，1M 上下文窗口。Batch/Flex 半价，Priority 2.5x。
+              - link "#OpenAI" [ref=e127] [cursor=pointer]:
+                - /url: /search_result?keyword=OpenAI&type=54&source=web_note_detail_r10
+              - link "#GPT55" [ref=e128] [cursor=pointer]:
+                - /url: /search_result?keyword=GPT55&type=54&source=web_note_detail_r10
+              - link "#ChatGPT" [ref=e129] [cursor=pointer]:
+                - /url: /search_result?keyword=ChatGPT&type=54&source=web_note_detail_r10
+              - link "#Codex" [ref=e130] [cursor=pointer]:
+                - /url: /search_result?keyword=Codex&type=54&source=web_note_detail_r10
+              - text: "#NVIDIA #前沿模型 #模型发布 #benchmark #推理效率 #工程博客"
+            - generic [ref=e133] [cursor=pointer]:
+              - img [ref=e134]
+              - generic [ref=e135]:
+                - generic [ref=e136]: 猜你想搜
+                - generic [ref=e138]: GPT-5.5 Pro
+            - generic [ref=e139]:
+              - generic [ref=e140]: 48分钟前 上海
+              - img [ref=e144] [cursor=pointer]
+          - generic [ref=e148]:
+            - img [ref=e149]
+            - paragraph [ref=e150]: 这是一片荒地点击评论
+        - generic [ref=e153]:
+          - generic [ref=e154]:
+            - generic [ref=e155]:
+              - paragraph [ref=e156]
+              - generic [ref=e159]: 说点什么...
+            - generic [ref=e161]:
+              - generic [ref=e162]:
+                - generic [ref=e163] [cursor=pointer]:
+                  - img [ref=e165]
+                  - generic [ref=e167]: "3"
+                - generic [ref=e168] [cursor=pointer]:
+                  - img [ref=e169]
+                  - generic [ref=e171]: "3"
+                - generic [ref=e172] [cursor=pointer]:
+                  - img [ref=e173]
+                  - generic [ref=e175]: 评论
+              - generic [ref=e177] [cursor=pointer]:
+                - img [ref=e178]
+                - img [ref=e180]
+          - generic [ref=e182]:
+            - generic [ref=e183]:
+              - img [ref=e185] [cursor=pointer]
+              - img [ref=e188] [cursor=pointer]
+            - generic [ref=e190]:
+              - button "发送" [disabled] [ref=e191] [cursor=pointer]
+              - button "取消" [ref=e192] [cursor=pointer]
+    - img [ref=e194] [cursor=pointer]

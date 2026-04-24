@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:Kelivo/core/models/chat_message.dart';
 import 'package:Kelivo/core/models/token_usage.dart';
 import 'package:Kelivo/core/services/analysis/analysis_capture_service.dart';
+import 'package:Kelivo/core/services/analysis/analysis_protocol.dart';
 import 'package:Kelivo/core/services/analysis/analysis_store.dart';
 import 'package:Kelivo/core/services/chat/chat_service.dart';
 

@@ -186,8 +186,8 @@ Stream<ChatStreamChunk> _sendClaudeStream(
                     ).hasMatch(upstreamModelId)
               ? 'adaptive'
               : (thinkingBudget != null && thinkingBudget > 0)
-                  ? 'enabled'
-                  : 'disabled',
+              ? 'enabled'
+              : 'disabled',
           if (thinkingBudget != null && thinkingBudget > 0)
             'budget_tokens': thinkingBudget,
         },

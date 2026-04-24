@@ -16,9 +16,13 @@ Future<void> main(List<String> args) async {
 
   final server = KelivoProxyServer(
     upstreamBaseUri: Uri.parse(upstream),
-    host: InternetAddress(options['host'] ?? InternetAddress.loopbackIPv4.address),
+    host: InternetAddress(
+      options['host'] ?? InternetAddress.loopbackIPv4.address,
+    ),
     port: int.tryParse(options['port'] ?? '') ?? 8787,
-    dbPath: options['db-path'] ?? p.join(Directory.current.path, 'proxy_analysis_v1.db'),
+    dbPath:
+        options['db-path'] ??
+        p.join(Directory.current.path, 'proxy_analysis_v1.db'),
   );
 
   final httpServer = await server.start();

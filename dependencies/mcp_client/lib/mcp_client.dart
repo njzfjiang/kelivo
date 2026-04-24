@@ -156,7 +156,8 @@ sealed class TransportConfig {
     bool enableCompression,
     Duration? heartbeatInterval,
     int maxMissedHeartbeats,
-    bool terminateOnClose,  // Whether to send DELETE on disconnect (default: true)
+    bool
+    terminateOnClose, // Whether to send DELETE on disconnect (default: true)
   }) = StreamableHttpTransportConfig;
 }
 
@@ -229,7 +230,7 @@ final class StreamableHttpTransportConfig extends TransportConfig {
     this.enableCompression = false,
     this.heartbeatInterval,
     this.maxMissedHeartbeats = 3,
-    this.terminateOnClose = true,  // Default: true for backward compatibility
+    this.terminateOnClose = true, // Default: true for backward compatibility
   });
 }
 

@@ -588,76 +588,67 @@ class _McpServerEditSheetState extends State<_McpServerEditSheet>
                                                         ),
                                                       ),
                                                     ],
-                                                    if (tool.params
+                                                    if (tool
+                                                        .params
                                                         .isNotEmpty) ...[
                                                       const SizedBox(height: 8),
                                                       Wrap(
                                                         spacing: 6,
                                                         runSpacing: 6,
-                                                        children:
-                                                            tool.params.map((
-                                                              p,
-                                                            ) {
-                                                              final color = p
-                                                                      .required
-                                                                  ? cs.primary
-                                                                  : cs.onSurface
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.5,
-                                                                      );
-                                                              final bg = p
-                                                                      .required
-                                                                  ? cs.primary
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.12,
-                                                                      )
-                                                                  : cs.onSurface
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.06,
-                                                                      );
-                                                              return Container(
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .symmetric(
+                                                        children: tool.params.map((
+                                                          p,
+                                                        ) {
+                                                          final color =
+                                                              p.required
+                                                              ? cs.primary
+                                                              : cs.onSurface
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.5,
+                                                                    );
+                                                          final bg = p.required
+                                                              ? cs.primary
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.12,
+                                                                    )
+                                                              : cs.onSurface
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.06,
+                                                                    );
+                                                          return Container(
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
                                                                   horizontal: 8,
                                                                   vertical: 2,
                                                                 ),
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color: bg,
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
+                                                            decoration: BoxDecoration(
+                                                              color: bg,
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
                                                                     999,
                                                                   ),
-                                                                  border:
-                                                                      Border
-                                                                          .all(
-                                                                    color: color
-                                                                        .withValues(
+                                                              border: Border.all(
+                                                                color: color
+                                                                    .withValues(
                                                                       alpha:
                                                                           0.5,
                                                                     ),
-                                                                  ),
-                                                                ),
-                                                                child: Text(
-                                                                  p.name,
-                                                                  style:
-                                                                      TextStyle(
-                                                                    fontSize:
-                                                                        11,
-                                                                    color:
-                                                                        color,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w600,
-                                                                  ),
-                                                                ),
-                                                              );
-                                                            }).toList(),
+                                                              ),
+                                                            ),
+                                                            child: Text(
+                                                              p.name,
+                                                              style: TextStyle(
+                                                                fontSize: 11,
+                                                                color: color,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                              ),
+                                                            ),
+                                                          );
+                                                        }).toList(),
                                                       ),
                                                     ],
                                                   ],
@@ -689,9 +680,9 @@ class _McpServerEditSheetState extends State<_McpServerEditSheet>
                                                     color: tool.needsApproval
                                                         ? cs.primary
                                                         : cs.onSurface
-                                                            .withValues(
-                                                              alpha: 0.4,
-                                                            ),
+                                                              .withValues(
+                                                                alpha: 0.4,
+                                                              ),
                                                   ),
                                                   const SizedBox(width: 6),
                                                   Expanded(
@@ -707,18 +698,14 @@ class _McpServerEditSheetState extends State<_McpServerEditSheet>
                                                     ),
                                                   ),
                                                   IosSwitch(
-                                                    value:
-                                                        tool.needsApproval,
-                                                    onChanged: (v) =>
-                                                        context
-                                                            .read<
-                                                              McpProvider
-                                                            >()
-                                                            .setToolNeedsApproval(
-                                                              server!.id,
-                                                              tool.name,
-                                                              v,
-                                                            ),
+                                                    value: tool.needsApproval,
+                                                    onChanged: (v) => context
+                                                        .read<McpProvider>()
+                                                        .setToolNeedsApproval(
+                                                          server!.id,
+                                                          tool.name,
+                                                          v,
+                                                        ),
                                                   ),
                                                 ],
                                               ),
