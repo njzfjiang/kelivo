@@ -222,4 +222,121 @@ void main() {
     expect(turn['total_tokens'], 3);
     expect(turn['response_json'], contains('[DONE]'));
   });
+
+  test('proxy routes upstream by provider_key with default fallback', () async {
+    Map<String, dynamic>? deepSeekBody;
+    Map<String, dynamic>? openAiBody;
+
+    final deepSeek = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() async {
+      await deepSeek.close(force: true);
+    });
+    deepSeek.listen((request) async {
+      deepSeekBody =
+          jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>;
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({
+          'choices': [
+            {
+              'message': {'role': 'assistant', 'content': 'deepseek-ok'},
+              'finish_reason': 'stop',
+            },
+          ],
+        }),
+      );
+      await request.response.close();
+    });
+
+    final openAi = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() async {
+      await openAi.close(force: true);
+    });
+    openAi.listen((request) async {
+      openAiBody =
+          jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>;
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        jsonEncode({
+          'choices': [
+            {
+              'message': {'role': 'assistant', 'content': 'openai-ok'},
+              'finish_reason': 'stop',
+            },
+          ],
+        }),
+      );
+      await request.response.close();
+    });
+
+    final tempDir = await Directory.systemTemp.createTemp('kelivo_proxy_route');
+    addTearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    final proxy = KelivoProxyServer(
+      upstreamBaseUri: Uri.parse(
+        'http://${openAi.address.address}:${openAi.port}',
+      ),
+      providerUpstreamBaseUris: {
+        'DeepSeek': Uri.parse(
+          'http://${deepSeek.address.address}:${deepSeek.port}',
+        ),
+      },
+      host: InternetAddress.loopbackIPv4,
+      port: 0,
+      dbPath: p.join(tempDir.path, 'proxy_analysis_v1.db'),
+    );
+    final proxyServer = await proxy.start();
+    addTearDown(() async {
+      await proxy.close();
+    });
+
+    final client = HttpClient();
+    addTearDown(client.close);
+
+    Future<String> sendWithProvider(String turnId, String providerKey) async {
+      final req = await client.post(
+        proxyServer.address.address,
+        proxyServer.port,
+        '/v1/chat/completions',
+      );
+      req.headers.contentType = ContentType.json;
+      req.headers.set(kelivoAnalysisTurnHeaderName, turnId);
+      req.headers.set(kelivoAnalysisConversationHeaderName, 'session-route');
+      req.write(
+        jsonEncode({
+          'model': 'test-model',
+          'messages': [
+            {'role': 'user', 'content': 'hello'},
+          ],
+          kelivoAnalysisMetaBodyKey: {
+            'turn_id': turnId,
+            'session_id': 'session-route',
+            'seq': 1,
+            'provider_key': providerKey,
+            'model_id': 'test-model',
+            'stream': false,
+            'inject_log': const [],
+          },
+        }),
+      );
+      final resp = await req.close();
+      return await utf8.decoder.bind(resp).join();
+    }
+
+    final deepSeekResp = await sendWithProvider('turn-deepseek', 'DeepSeek');
+    final openAiResp = await sendWithProvider('turn-openai', 'OpenAI');
+
+    expect(deepSeekResp, contains('deepseek-ok'));
+    expect(openAiResp, contains('openai-ok'));
+    expect(deepSeekBody?['messages'], isA<List>());
+    expect(openAiBody?['messages'], isA<List>());
+  });
 }

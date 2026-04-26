@@ -129,55 +129,22 @@ class MessageBuilderService {
     final out = <Map<String, dynamic>>[];
 
     for (final m in source) {
+      var handledAssistantContentInToolHistory = false;
       if (includeOpenAIToolMessages && m.role == 'assistant') {
         final events = chatService.getToolEvents(m.id);
         if (events.isNotEmpty) {
-          final calls = <Map<String, dynamic>>[];
-          final toolMessages = <Map<String, dynamic>>[];
-
-          for (int i = 0; i < events.length; i++) {
-            final e = events[i];
-            final name = (e['name'] ?? '').toString().trim();
-            if (name.isEmpty) continue;
-            final rawId = (e['id'] ?? '').toString().trim();
-            final id = rawId.isNotEmpty
-                ? rawId
-                : 'call_${m.id.substring(0, m.id.length < 8 ? m.id.length : 8)}_$i';
-
-            Map<String, dynamic> args = const <String, dynamic>{};
-            final a = e['arguments'];
-            if (a is Map) {
-              args = a.map((k, v) => MapEntry(k.toString(), v));
-            }
-            String argumentsJson = '{}';
-            try {
-              argumentsJson = jsonEncode(args);
-            } catch (_) {}
-
-            calls.add({
-              'id': id,
-              'type': 'function',
-              'function': {'name': name, 'arguments': argumentsJson},
-            });
-
-            final c = e['content'];
-            if (c != null) {
-              toolMessages.add({
-                'role': 'tool',
-                'name': name,
-                'tool_call_id': id,
-                'content': c.toString(),
-              });
-            }
-          }
-
-          if (calls.isNotEmpty) {
-            out.add({
-              'role': 'assistant',
-              'content': '\n\n',
-              'tool_calls': calls,
-            });
-            out.addAll(toolMessages);
+          final historyMessages = _buildAssistantToolHistoryMessages(
+            message: m,
+            events: events,
+          );
+          if (historyMessages.isNotEmpty) {
+            out.addAll(historyMessages);
+            handledAssistantContentInToolHistory = historyMessages.any(
+              (item) =>
+                  item['role'] == 'assistant' &&
+                  item['tool_calls'] == null &&
+                  (item['content'] ?? '').toString() == m.content,
+            );
           }
         }
       }
@@ -185,6 +152,9 @@ class MessageBuilderService {
       var content = m.content;
       if (m.role == 'assistant' && geminiThoughtSignatureHandler != null) {
         content = geminiThoughtSignatureHandler!(m, content);
+      }
+      if (handledAssistantContentInToolHistory && m.role == 'assistant') {
+        continue;
       }
       if (content.isEmpty) continue;
       out.add(<String, dynamic>{
@@ -194,6 +164,286 @@ class MessageBuilderService {
     }
 
     return out;
+  }
+
+  List<Map<String, dynamic>> _buildAssistantToolHistoryMessages({
+    required ChatMessage message,
+    required List<Map<String, dynamic>> events,
+  }) {
+    final normalizedEvents = <_ToolHistoryEvent>[];
+    for (int i = 0; i < events.length; i++) {
+      final e = events[i];
+      final name = (e['name'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      final rawId = (e['id'] ?? '').toString().trim();
+      final id = rawId.isNotEmpty
+          ? rawId
+          : 'call_${message.id.substring(0, message.id.length < 8 ? message.id.length : 8)}_$i';
+
+      Map<String, dynamic> args = const <String, dynamic>{};
+      final a = e['arguments'];
+      if (a is Map) {
+        args = a.map((k, v) => MapEntry(k.toString(), v));
+      }
+
+      String argumentsJson = '{}';
+      try {
+        argumentsJson = jsonEncode(args);
+      } catch (_) {}
+
+      normalizedEvents.add(
+        _ToolHistoryEvent(
+          id: id,
+          name: name,
+          arguments: args,
+          argumentsJson: argumentsJson,
+          content: e['content']?.toString(),
+          toolBatchIndex: e['tool_batch_index'] as int?,
+          assistantContent: e['assistant_content']?.toString(),
+          assistantReasoningContent: e['assistant_reasoning_content']
+              ?.toString(),
+        ),
+      );
+    }
+
+    if (normalizedEvents.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final segments = _decodeReasoningSegments(message.reasoningSegmentsJson);
+    if (normalizedEvents.any((event) => event.toolBatchIndex != null)) {
+      return _buildBatchedToolHistoryMessages(
+        message: message,
+        events: normalizedEvents,
+        segments: segments,
+      );
+    }
+    if (segments.isEmpty) {
+      return _buildFallbackToolHistoryMessages(
+        message: message,
+        events: normalizedEvents,
+      );
+    }
+
+    final out = <Map<String, dynamic>>[];
+    int eventIndex = 0;
+
+    for (int i = 0; i < segments.length; i++) {
+      final segment = segments[i];
+      final nextBoundary = i < segments.length - 1
+          ? segments[i + 1].toolStartIndex.clamp(0, normalizedEvents.length)
+          : normalizedEvents.length;
+      final segmentToolStart = segment.toolStartIndex.clamp(
+        0,
+        normalizedEvents.length,
+      );
+
+      if (nextBoundary > segmentToolStart) {
+        final subEvents = normalizedEvents.sublist(
+          segmentToolStart,
+          nextBoundary,
+        );
+        out.add({
+          'role': 'assistant',
+          'content': '',
+          'tool_calls': [
+            for (final event in subEvents)
+              {
+                'id': event.id,
+                'type': 'function',
+                'function': {
+                  'name': event.name,
+                  'arguments': event.argumentsJson,
+                },
+              },
+          ],
+          if (segment.text.isNotEmpty) 'reasoning_content': segment.text,
+        });
+        for (final event in subEvents) {
+          if (event.content == null) continue;
+          out.add({
+            'role': 'tool',
+            'name': event.name,
+            'tool_call_id': event.id,
+            'content': event.content!,
+          });
+        }
+        eventIndex = nextBoundary;
+        continue;
+      }
+
+      if (i == segments.length - 1) {
+        final finalContent = message.content;
+        if (finalContent.isNotEmpty || segment.text.isNotEmpty) {
+          out.add({
+            'role': 'assistant',
+            'content': finalContent,
+            if (segment.text.isNotEmpty) 'reasoning_content': segment.text,
+          });
+        }
+      }
+    }
+
+    while (eventIndex < normalizedEvents.length) {
+      final event = normalizedEvents[eventIndex];
+      out.add({
+        'role': 'assistant',
+        'content': '',
+        'tool_calls': [
+          {
+            'id': event.id,
+            'type': 'function',
+            'function': {'name': event.name, 'arguments': event.argumentsJson},
+          },
+        ],
+      });
+      if (event.content != null) {
+        out.add({
+          'role': 'tool',
+          'name': event.name,
+          'tool_call_id': event.id,
+          'content': event.content!,
+        });
+      }
+      eventIndex++;
+    }
+
+    if (out.isEmpty && message.content.isNotEmpty) {
+      out.add({'role': 'assistant', 'content': message.content});
+    }
+
+    return out;
+  }
+
+  List<Map<String, dynamic>> _buildBatchedToolHistoryMessages({
+    required ChatMessage message,
+    required List<_ToolHistoryEvent> events,
+    required List<_StoredReasoningSegment> segments,
+  }) {
+    final grouped = <int, List<_ToolHistoryEvent>>{};
+    for (final event in events) {
+      grouped
+          .putIfAbsent(event.toolBatchIndex ?? 0, () => <_ToolHistoryEvent>[])
+          .add(event);
+    }
+
+    final batchIndexes = grouped.keys.toList()..sort();
+    final out = <Map<String, dynamic>>[];
+    for (final batchIndex in batchIndexes) {
+      final batch = grouped[batchIndex]!;
+      final first = batch.first;
+      out.add({
+        'role': 'assistant',
+        'content': first.assistantContent ?? '',
+        'tool_calls': [
+          for (final event in batch)
+            {
+              'id': event.id,
+              'type': 'function',
+              'function': {
+                'name': event.name,
+                'arguments': event.argumentsJson,
+              },
+            },
+        ],
+        if ((first.assistantReasoningContent ?? '').isNotEmpty)
+          'reasoning_content': first.assistantReasoningContent,
+      });
+      for (final event in batch) {
+        if (event.content == null) continue;
+        out.add({
+          'role': 'tool',
+          'name': event.name,
+          'tool_call_id': event.id,
+          'content': event.content!,
+        });
+      }
+    }
+
+    final finalReasoning = _finalAssistantReasoningContent(
+      events: events,
+      segments: segments,
+    );
+    if (message.content.isNotEmpty || finalReasoning.isNotEmpty) {
+      out.add({
+        'role': 'assistant',
+        'content': message.content,
+        if (finalReasoning.isNotEmpty) 'reasoning_content': finalReasoning,
+      });
+    }
+    return out;
+  }
+
+  List<Map<String, dynamic>> _buildFallbackToolHistoryMessages({
+    required ChatMessage message,
+    required List<_ToolHistoryEvent> events,
+  }) {
+    final toolMessages = <Map<String, dynamic>>[];
+    final calls = <Map<String, dynamic>>[];
+    for (final event in events) {
+      calls.add({
+        'id': event.id,
+        'type': 'function',
+        'function': {'name': event.name, 'arguments': event.argumentsJson},
+      });
+      if (event.content != null) {
+        toolMessages.add({
+          'role': 'tool',
+          'name': event.name,
+          'tool_call_id': event.id,
+          'content': event.content!,
+        });
+      }
+    }
+
+    return <Map<String, dynamic>>[
+      {
+        'role': 'assistant',
+        'content': '',
+        'tool_calls': calls,
+        if ((message.reasoningText ?? '').isNotEmpty)
+          'reasoning_content': message.reasoningText,
+      },
+      ...toolMessages,
+      if (message.content.isNotEmpty)
+        {'role': 'assistant', 'content': message.content},
+    ];
+  }
+
+  List<_StoredReasoningSegment> _decodeReasoningSegments(String? json) {
+    final raw = (json ?? '').trim();
+    if (raw.isEmpty) return const <_StoredReasoningSegment>[];
+    try {
+      final decoded = jsonDecode(raw);
+      final items = decoded is Map<String, dynamic>
+          ? (decoded['segments'] as List? ?? const <dynamic>[])
+          : decoded as List;
+      return items
+          .whereType<Map>()
+          .map((item) => item.map((k, v) => MapEntry(k.toString(), v)))
+          .map(
+            (item) => _StoredReasoningSegment(
+              text: (item['text'] ?? '').toString(),
+              toolStartIndex: (item['toolStartIndex'] as int?) ?? 0,
+            ),
+          )
+          .where((segment) => segment.text.isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return const <_StoredReasoningSegment>[];
+    }
+  }
+
+  String _finalAssistantReasoningContent({
+    required List<_ToolHistoryEvent> events,
+    required List<_StoredReasoningSegment> segments,
+  }) {
+    if (segments.isEmpty) return '';
+    final last = segments.last;
+    if (last.toolStartIndex >= events.length) {
+      return last.text;
+    }
+    return '';
   }
 
   /// Parse input data from raw message content (extracts images and documents).
@@ -1036,6 +1286,38 @@ class _DocTextCacheEntry {
   final String? text;
   final int modifiedMs;
   final int size;
+}
+
+class _ToolHistoryEvent {
+  const _ToolHistoryEvent({
+    required this.id,
+    required this.name,
+    required this.arguments,
+    required this.argumentsJson,
+    required this.content,
+    this.toolBatchIndex,
+    this.assistantContent,
+    this.assistantReasoningContent,
+  });
+
+  final String id;
+  final String name;
+  final Map<String, dynamic> arguments;
+  final String argumentsJson;
+  final String? content;
+  final int? toolBatchIndex;
+  final String? assistantContent;
+  final String? assistantReasoningContent;
+}
+
+class _StoredReasoningSegment {
+  const _StoredReasoningSegment({
+    required this.text,
+    required this.toolStartIndex,
+  });
+
+  final String text;
+  final int toolStartIndex;
 }
 
 class MemoryAndRecentChatsInjectionCapture {

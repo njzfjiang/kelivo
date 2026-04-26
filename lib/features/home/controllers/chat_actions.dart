@@ -1171,6 +1171,7 @@ class ChatActions {
             );
           },
     );
+    _syncReasoningStateToMessageList(messageId);
 
     final finalMessage = _messages.firstWhere(
       (m) => m.id == messageId,
@@ -1263,6 +1264,7 @@ class ChatActions {
             );
           },
     );
+    _syncReasoningStateToMessageList(messageId);
 
     await _conversationStreams.remove(conversationId)?.cancel();
     await messageGenerationService.analysisCaptureService.markError(
@@ -1306,6 +1308,33 @@ class ChatActions {
     streamController.removeStreamingNotifier(messageId);
     onStreamFinished?.call();
     await _conversationStreams.remove(conversationId)?.cancel();
+  }
+
+  void _syncReasoningStateToMessageList(String messageId) {
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) return;
+
+    final reasoning = streamController.reasoning[messageId];
+    final segments =
+        streamController.getReasoningSegments(messageId) ?? const [];
+    final splits = streamController.getContentSplitData(messageId);
+
+    final reasoningSegmentsJson = (segments.isNotEmpty || splits != null)
+        ? streamController.serializeReasoningSegmentsWithSplits(
+            segments,
+            contentSplitOffsets: splits?.offsets,
+            reasoningCountAtSplit: splits?.reasoningCounts,
+            toolCountAtSplit: splits?.toolCounts,
+          )
+        : _messages[index].reasoningSegmentsJson;
+
+    _messages[index] = _messages[index].copyWith(
+      reasoningText: reasoning?.text,
+      reasoningStartAt: reasoning?.startAt,
+      reasoningFinishedAt: reasoning?.finishedAt,
+      reasoningSegmentsJson: reasoningSegmentsJson,
+    );
+    onMessagesChanged?.call();
   }
 
   // ============================================================================

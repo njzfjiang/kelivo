@@ -8,15 +8,27 @@ import 'proxy_analysis_store.dart';
 
 class KelivoProxyServer {
   KelivoProxyServer({
-    required Uri upstreamBaseUri,
+    Uri? upstreamBaseUri,
+    Map<String, Uri> providerUpstreamBaseUris = const <String, Uri>{},
     required String dbPath,
     InternetAddress? host,
     this.port = 8787,
-  }) : _upstreamBaseUri = upstreamBaseUri,
+  }) : _defaultUpstreamBaseUri = upstreamBaseUri,
+       _providerUpstreamBaseUris = {
+         for (final entry in providerUpstreamBaseUris.entries)
+           entry.key.trim().toLowerCase(): entry.value,
+       },
        host = host ?? InternetAddress.loopbackIPv4,
-       _store = ProxyAnalysisStore(dbPath: dbPath);
+       _store = ProxyAnalysisStore(dbPath: dbPath) {
+    if (_defaultUpstreamBaseUri == null && _providerUpstreamBaseUris.isEmpty) {
+      throw ArgumentError(
+        'KelivoProxyServer requires upstreamBaseUri or providerUpstreamBaseUris.',
+      );
+    }
+  }
 
-  final Uri _upstreamBaseUri;
+  final Uri? _defaultUpstreamBaseUri;
+  final Map<String, Uri> _providerUpstreamBaseUris;
   final ProxyAnalysisStore _store;
   final InternetAddress host;
   final int port;
@@ -51,12 +63,12 @@ class KelivoProxyServer {
     final requestBodyBytes = await _readRequestBytes(request);
     final incomingHeaders = _flattenHeaders(request.headers);
     final upstreamHeaders = Map<String, String>.from(incomingHeaders)
-      ..remove(kelivoAnalysisTurnHeaderName)
-      ..remove(kelivoAnalysisConversationHeaderName)
-      ..remove(kelivoAnalysisVersionHeaderName)
-      ..remove(HttpHeaders.hostHeader)
-      ..remove(HttpHeaders.contentLengthHeader)
-      ..remove(HttpHeaders.acceptEncodingHeader);
+      ..remove(kelivoAnalysisTurnHeaderName.toLowerCase())
+      ..remove(kelivoAnalysisConversationHeaderName.toLowerCase())
+      ..remove(kelivoAnalysisVersionHeaderName.toLowerCase())
+      ..remove(HttpHeaders.hostHeader.toLowerCase())
+      ..remove(HttpHeaders.contentLengthHeader.toLowerCase())
+      ..remove(HttpHeaders.acceptEncodingHeader.toLowerCase());
 
     final parsed = _parseRequestPayload(
       headers: incomingHeaders,
@@ -112,8 +124,13 @@ class KelivoProxyServer {
     }
 
     try {
-      final upstreamUri = _resolveUpstreamUri(request.uri);
-      stdout.writeln('[KelivoProxy] upstream ${request.method} $upstreamUri');
+      final upstreamUri = _resolveUpstreamUri(
+        request.uri,
+        providerKey: parsed.metadata?.providerKey,
+      );
+      stdout.writeln(
+        '[KelivoProxy] upstream ${request.method} $upstreamUri provider=${parsed.metadata?.providerKey ?? '-'}',
+      );
       final upstreamRequest = await _client.openUrl(
         request.method,
         upstreamUri,
@@ -291,16 +308,32 @@ class KelivoProxyServer {
     }
   }
 
-  Uri _resolveUpstreamUri(Uri incoming) {
-    final basePath = _upstreamBaseUri.path.endsWith('/')
-        ? _upstreamBaseUri.path.substring(0, _upstreamBaseUri.path.length - 1)
-        : _upstreamBaseUri.path;
+  Uri _resolveUpstreamUri(Uri incoming, {String? providerKey}) {
+    final upstreamBaseUri = _resolveUpstreamBaseUri(providerKey);
+    final basePath = upstreamBaseUri.path.endsWith('/')
+        ? upstreamBaseUri.path.substring(0, upstreamBaseUri.path.length - 1)
+        : upstreamBaseUri.path;
     final incomingPath = incoming.path.startsWith('/')
         ? incoming.path
         : '/${incoming.path}';
-    return _upstreamBaseUri.replace(
+    return upstreamBaseUri.replace(
       path: '$basePath$incomingPath',
       query: incoming.hasQuery ? incoming.query : null,
+    );
+  }
+
+  Uri _resolveUpstreamBaseUri(String? providerKey) {
+    final normalized = providerKey?.trim().toLowerCase() ?? '';
+    if (normalized.isNotEmpty) {
+      final mapped = _providerUpstreamBaseUris[normalized];
+      if (mapped != null) return mapped;
+    }
+    final fallback = _defaultUpstreamBaseUri;
+    if (fallback != null) return fallback;
+    throw StateError(
+      normalized.isEmpty
+          ? 'No default upstream configured, and request metadata did not include provider_key.'
+          : 'No upstream configured for provider "$providerKey", and no default upstream is available.',
     );
   }
 

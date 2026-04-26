@@ -314,6 +314,133 @@ Proxy DB：
 
 ## 后续建议
 
+## 2026-04-23 Debug 记录
+
+今天主要在 debug，核心结论如下。
+
+### 1. MCP 工具“有没有进请求”要以 DB 为准，不要信模型自述
+
+已经确认：
+
+- `tool_definitions` 会写入 `inject_snapshot_json`
+- `mcp_diagnostics` 会写入 `inject_snapshot_json`
+- `inject_log.kind=mcp_tools` 会记录 MCP 工具摘要
+
+因此当模型说“我看不到工具”时，先看 turn 级诊断，而不是先信模型。
+
+如果 `mcp_diagnostics` 显示：
+
+- `supports_tools=true`
+- `selected_connected_mcp_server_ids` 非空
+- `enabled_mcp_tool_names` 非空
+
+那么从 Kelivo 侧看，工具已经被正确放进请求。
+
+### 2. 当前 MCP 工具筛选逻辑
+
+当前实现不是“把所有 server 都塞进去”，而是四层交集：
+
+- assistant 的 `mcpServerIds`
+- 当前 `connectedServers`
+- `server.enabled == true`
+- `tool.enabled == true`
+
+相关路径：
+
+- `lib/features/home/services/tool_handler_service.dart`
+- `lib/core/services/mcp/mcp_tool_service.dart`
+- `lib/core/providers/mcp_provider.dart`
+
+### 3. 如果模型仍说看不到，很可能是工具集过大
+
+一次性给模型注入太多工具时，模型可能：
+
+- 不敢调用
+- 假装自己没有权限
+- 优先走文字回答
+- 自述与真实能力不一致
+
+当时观察到的工具集已经非常大，包括：
+
+- obsidian
+- my-health-data
+- filesystem
+- chrome-devtools
+- playwright
+- kelivo_fetch
+
+后续建议优先做最小实验：
+
+- 只保留 1 到 2 个 MCP server
+- 发一个强制工具调用的短请求
+- 看真实 tool call，而不是看模型的口头描述
+
+### 4. `analysis_inspect` 已增强 MCP 诊断可读性
+
+新增：
+
+- `tool_definitions`
+- `mcp_diagnostics`
+- `inject_log.kind=mcp_tools`
+
+以及新命令：
+
+```bash
+dart run bin/analysis_inspect.dart --app-db --mcp-only --turn-id=<turn_id>
+```
+
+用途：
+
+- 只打印某个 turn 的 tool/MCP 诊断
+- 避免长 request/response 输出把关键字段淹没
+
+### 5. Proxy 404 的根因是 `/v1` 路径放错位置
+
+Kelivo 对 OpenAI-compatible provider 默认会请求：
+
+```text
+<Base URL>/chat/completions
+```
+
+因此 proxy 转发时，`--upstream` 是否带 `/v1` 会直接影响上游地址。
+
+推荐：
+
+```bash
+dart run bin/kelivo_proxy.dart --upstream=http://127.0.0.1:4000/v1 --port=8787
+```
+
+同时 Kelivo provider Base URL 填：
+
+```text
+http://127.0.0.1:8787
+```
+
+不要两边都带 `/v1`。
+
+### 6. `flutter_tts` 的 format warning 不是源码错误，而是 stale `.dart_tool`
+
+问题现象：
+
+- `dart format .` 报 `package_config.json` 指向不存在的 `Users/psyche`
+
+根因：
+
+- `dependencies/flutter_tts/.dart_tool/package_config.json` 是旧机器生成文件
+- 里面残留了另一个用户目录和 Flutter SDK 路径
+
+处理方式：
+
+- 删除该 path dependency 下的 `.dart_tool`
+- 重新 `pub get`
+- 根 `.gitignore` 已改为递归忽略：
+
+```gitignore
+**/.dart_tool/
+```
+
+避免 path dependency 自己的 `.dart_tool` 再次污染工作区
+
 ## 云 Proxy 与手机端不改代码的边界
 
 问题背景：

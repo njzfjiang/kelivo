@@ -30,6 +30,23 @@ void main(List<String> args) {
     final showRolling = options.containsKey('rolling');
     final showSummaryVersions = options.containsKey('summary-versions');
     final showMemorySuggestions = options.containsKey('memory-suggestions');
+    final showMcpOnly =
+        options.containsKey('mcp-only') || options.containsKey('tools-only');
+
+    if (showMcpOnly) {
+      final normalizedTurnId = turnId?.trim();
+      if (normalizedTurnId == null || normalizedTurnId.isEmpty) {
+        stderr.writeln('--mcp-only requires --turn-id=<turn_id>');
+        exitCode = 2;
+        return;
+      }
+      _printTurnMcpDiagnostics(
+        db,
+        normalizedTurnId,
+        excerptLength: int.tryParse(options['excerpt'] ?? '220') ?? 220,
+      );
+      return;
+    }
 
     if (turnId != null && turnId.trim().isNotEmpty) {
       _printTurnDetails(
@@ -123,6 +140,9 @@ void _printUsage() {
   stdout.writeln(
     '  dart run bin/analysis_inspect.dart --app-db --memory-suggestions --session-id=<session_id>',
   );
+  stdout.writeln(
+    '  dart run bin/analysis_inspect.dart --app-db --mcp-only --turn-id=<turn_id>',
+  );
   stdout.writeln('');
   stdout.writeln('Options:');
   stdout.writeln('  --db-path=PATH      SQLite file path');
@@ -141,6 +161,10 @@ void _printUsage() {
   );
   stdout.writeln('  --summary-versions  Show rolling summary version history');
   stdout.writeln('  --memory-suggestions Show memory suggestion rows');
+  stdout.writeln(
+    '  --mcp-only          Show only tool/MCP diagnostics for one turn',
+  );
+  stdout.writeln('  --tools-only        Alias of --mcp-only');
   stdout.writeln('  --excerpt=N         Excerpt length, default 90/220');
   stdout.writeln('  --help              Show this message');
 }
@@ -665,6 +689,116 @@ ORDER BY ts, event_id
   if (responseJson != null) {
     stdout.writeln('Response json');
     stdout.writeln(_block(_excerpt(responseJson, excerptLength * 3)));
+  }
+}
+
+void _printTurnMcpDiagnostics(
+  Database db,
+  String turnId, {
+  required int excerptLength,
+}) {
+  final turns = db.select('SELECT * FROM turns WHERE turn_id = ?', [turnId]);
+  if (turns.isEmpty) {
+    stdout.writeln('Turn not found: $turnId');
+    return;
+  }
+
+  final turn = Map<String, Object?>.from(turns.first);
+  final injectSnapshot = _decodeJsonMap(turn['inject_snapshot_json']);
+  final injectLog = db.select(
+    '''
+SELECT kind, title, reason, content_excerpt, payload_json
+FROM inject_log
+WHERE turn_id = ? AND kind = 'mcp_tools'
+ORDER BY id DESC
+''',
+    [turnId],
+  );
+
+  stdout.writeln('Turn MCP diagnostics');
+  stdout.writeln('');
+  stdout.writeln(_formatKeyValueLine('turn_id', turnId));
+  stdout.writeln(_formatKeyValueLine('session_id', turn['session_id']));
+  stdout.writeln(_formatKeyValueLine('provider', turn['provider_key']));
+  stdout.writeln(_formatKeyValueLine('model', turn['model_id']));
+  stdout.writeln('');
+
+  if (injectSnapshot == null) {
+    stdout.writeln('No inject_snapshot_json found.');
+    return;
+  }
+
+  final toolDefinitions = injectSnapshot['tool_definitions'];
+  if (toolDefinitions is List) {
+    final toolNames = toolDefinitions
+        .whereType<Map>()
+        .map((tool) => (tool['name'] ?? '').toString())
+        .where((name) => name.isNotEmpty)
+        .toList(growable: false);
+    stdout.writeln(
+      _formatKeyValueLine('tool_definition_count', toolDefinitions.length),
+    );
+    if (toolNames.isNotEmpty) {
+      stdout.writeln(_formatKeyValueLine('tool_names', toolNames.join(', ')));
+    }
+    stdout.writeln('');
+  }
+
+  final mcpDiagnostics = _mapFromDynamic(injectSnapshot['mcp_diagnostics']);
+  if (mcpDiagnostics == null || mcpDiagnostics.isEmpty) {
+    stdout.writeln('No mcp_diagnostics found.');
+  } else {
+    stdout.writeln('MCP diagnostics');
+    stdout.writeln(_formatKeyValueLine('reason', mcpDiagnostics['reason']));
+    stdout.writeln(
+      _formatKeyValueLine('supports_tools', mcpDiagnostics['supports_tools']),
+    );
+    stdout.writeln(
+      _formatKeyValueLine(
+        'selected_assistant_mcp_server_ids',
+        _joinDynamicList(mcpDiagnostics['selected_assistant_mcp_server_ids']),
+      ),
+    );
+    stdout.writeln(
+      _formatKeyValueLine(
+        'connected_mcp_server_ids',
+        _joinDynamicList(mcpDiagnostics['connected_mcp_server_ids']),
+      ),
+    );
+    stdout.writeln(
+      _formatKeyValueLine(
+        'selected_connected_mcp_server_ids',
+        _joinDynamicList(mcpDiagnostics['selected_connected_mcp_server_ids']),
+      ),
+    );
+    stdout.writeln(
+      _formatKeyValueLine(
+        'enabled_mcp_tool_names',
+        _joinDynamicList(mcpDiagnostics['enabled_mcp_tool_names']),
+      ),
+    );
+    final selectedServers = mcpDiagnostics['selected_connected_mcp_servers'];
+    if (selectedServers is List && selectedServers.isNotEmpty) {
+      for (final server in selectedServers.whereType<Map>()) {
+        stdout.writeln(
+          '  server=${server['id'] ?? '-'} name=${server['name'] ?? '-'} status=${server['status'] ?? '-'} enabled_tools=${_joinDynamicList(server['enabled_tool_names'])}',
+        );
+      }
+    }
+  }
+
+  if (injectLog.isNotEmpty) {
+    stdout.writeln('');
+    stdout.writeln('Inject log (mcp_tools)');
+    for (final row in injectLog) {
+      stdout.writeln(
+        '- title=${row['title'] ?? '-'} reason=${row['reason'] ?? '-'}',
+      );
+      final excerpt = (row['content_excerpt'] ?? '').toString().trim();
+      if (excerpt.isNotEmpty) {
+        stdout.writeln('  excerpt=${_excerpt(excerpt, excerptLength)}');
+      }
+    }
   }
 }
 

@@ -89,6 +89,42 @@ bool _isKimiThinkingModel(String upstreamModelId) {
   return lower.contains('kimi-k2-thinking') || lower.contains('kimi-k2.5');
 }
 
+void _applyDeepSeekThinkingBody(
+  Map<String, dynamic> body, {
+  required bool isReasoning,
+  int? thinkingBudget,
+}) {
+  body.remove('reasoning_content');
+  body.remove('reasoning_budget');
+  if (!isReasoning) {
+    body.remove('thinking');
+    body.remove('reasoning_effort');
+    return;
+  }
+  body['thinking'] = {'type': _isOff(thinkingBudget) ? 'disabled' : 'enabled'};
+}
+
+void _logReasoningEchoDebug({
+  required String branch,
+  required String upstreamModelId,
+  required String host,
+  required bool needsReasoningEcho,
+  String? reasoningContent,
+  List<Map<String, dynamic>>? calls,
+}) {
+  if (!needsReasoningEcho) return;
+  final isDeepSeek =
+      host.contains('deepseek') ||
+      upstreamModelId.toLowerCase().contains('deepseek');
+  if (!isDeepSeek) return;
+  FlutterLogger.log(
+    '[DeepSeekReasoningEcho] branch=$branch model=$upstreamModelId '
+    'calls=${calls?.length ?? 0} reasoning_len=${reasoningContent?.length ?? 0} '
+    'has_reasoning=${(reasoningContent ?? '').isNotEmpty}',
+    tag: 'ChatApi',
+  );
+}
+
 void _normalizeMoonshotKimiChatBody(
   Map<String, dynamic> body, {
   required String upstreamModelId,
@@ -1095,22 +1131,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
       body.remove('reasoning_effort');
     } else if (host.contains('deepseek') ||
         upstreamModelId.toLowerCase().contains('deepseek')) {
-      if (isReasoning) {
-        if (off) {
-          body['reasoning_content'] = false;
-          body.remove('reasoning_budget');
-        } else {
-          body['reasoning_content'] = true;
-          if (thinkingBudget != null && thinkingBudget > 0) {
-            body['reasoning_budget'] = thinkingBudget;
-          } else {
-            body.remove('reasoning_budget');
-          }
-        }
-      } else {
-        body.remove('reasoning_content');
-        body.remove('reasoning_budget');
-      }
+      _applyDeepSeekThinkingBody(
+        body,
+        isReasoning: isReasoning,
+        thinkingBudget: thinkingBudget,
+      );
     } else if (_isKimiThinkingModel(upstreamModelId)) {
       _normalizeMoonshotKimiChatBody(
         body,
@@ -1378,6 +1403,14 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 ? reasoningDetailsForTools
                 : null,
           );
+          _logReasoningEchoDebug(
+            branch: 'nonstream_initial_followup',
+            upstreamModelId: upstreamModelId,
+            host: host,
+            needsReasoningEcho: needsReasoningEcho,
+            reasoningContent: needsReasoningEcho ? reasoningForTools : null,
+            calls: calls,
+          );
           next.add(assistantToolCallMsg);
           for (final r in results) {
             final id = r['tool_call_id'];
@@ -1573,6 +1606,14 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 ? reasoningDetailsBuffer
                 : null,
           );
+          _logReasoningEchoDebug(
+            branch: 'stream_finish_tool_calls_first_followup',
+            upstreamModelId: upstreamModelId,
+            host: host,
+            needsReasoningEcho: needsReasoningEcho,
+            reasoningContent: needsReasoningEcho ? reasoningBuffer : null,
+            calls: calls,
+          );
           mm2.add(assistantToolCallMsg);
           for (final r in results) {
             final id = r['tool_call_id'];
@@ -1704,22 +1745,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               body2.remove('reasoning_effort');
             } else if (host.contains('deepseek') ||
                 upstreamModelId.toLowerCase().contains('deepseek')) {
-              if (isReasoning) {
-                if (off) {
-                  body2['reasoning_content'] = false;
-                  body2.remove('reasoning_budget');
-                } else {
-                  body2['reasoning_content'] = true;
-                  if (thinkingBudget != null && thinkingBudget > 0) {
-                    body2['reasoning_budget'] = thinkingBudget;
-                  } else {
-                    body2.remove('reasoning_budget');
-                  }
-                }
-              } else {
-                body2.remove('reasoning_content');
-                body2.remove('reasoning_budget');
-              }
+              _applyDeepSeekThinkingBody(
+                body2,
+                isReasoning: isReasoning,
+                thinkingBudget: thinkingBudget,
+              );
             }
 
             // Ask for usage in streaming (when supported)
@@ -1810,6 +1840,8 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     final txt = _extractOpenAICompatibleDeltaText(delta);
                     final rc =
                         delta?['reasoning_content'] ?? delta?['reasoning'];
+                    final rcMsg =
+                        message?['reasoning_content'] ?? message?['reasoning'];
                     final u = o['usage'];
                     if (u != null) {
                       final prompt = (u['prompt_tokens'] ?? 0) as int;
@@ -1886,8 +1918,6 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                       }
                     }
                     if (message != null) {
-                      final rcMsg =
-                          message['reasoning_content'] ?? message['reasoning'];
                       if (rcMsg is String &&
                           rcMsg.isNotEmpty &&
                           needsReasoningEcho) {
@@ -2053,6 +2083,14 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 reasoningDetails: preserveReasoningDetails
                     ? reasoningDetailsAccum
                     : null,
+              );
+              _logReasoningEchoDebug(
+                branch: 'stream_followup_loop_done_branch',
+                upstreamModelId: upstreamModelId,
+                host: host,
+                needsReasoningEcho: needsReasoningEcho,
+                reasoningContent: needsReasoningEcho ? reasoningAccum : null,
+                calls: calls2,
               );
               currentMessages = [
                 ...currentMessages,
@@ -3033,6 +3071,14 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 ? reasoningDetailsBuffer
                 : null,
           );
+          _logReasoningEchoDebug(
+            branch: 'stream_finish_non_tool_reason_followup',
+            upstreamModelId: upstreamModelId,
+            host: host,
+            needsReasoningEcho: needsReasoningEcho,
+            reasoningContent: needsReasoningEcho ? reasoningBuffer : null,
+            calls: calls,
+          );
           mm2.add(assistantToolCallMsg);
           for (final r in results) {
             final id = r['tool_call_id'];
@@ -3161,22 +3207,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
               body2.remove('reasoning_effort');
             } else if (host.contains('deepseek') ||
                 upstreamModelId.toLowerCase().contains('deepseek')) {
-              if (isReasoning) {
-                if (off) {
-                  body2['reasoning_content'] = false;
-                  body2.remove('reasoning_budget');
-                } else {
-                  body2['reasoning_content'] = true;
-                  if (thinkingBudget != null && thinkingBudget > 0) {
-                    body2['reasoning_budget'] = thinkingBudget;
-                  } else {
-                    body2.remove('reasoning_budget');
-                  }
-                }
-              } else {
-                body2.remove('reasoning_content');
-                body2.remove('reasoning_budget');
-              }
+              _applyDeepSeekThinkingBody(
+                body2,
+                isReasoning: isReasoning,
+                thinkingBudget: thinkingBudget,
+              );
             }
             _applyCompatibleBuiltInSearch(
               body2,
@@ -3254,6 +3289,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     final c0 = (o['choices'] as List).first;
                     finishReason2 = c0['finish_reason'] as String?;
                     final delta = c0['delta'] as Map?;
+                    final message = c0['message'] as Map?;
                     final txt = _extractOpenAICompatibleDeltaText(delta);
                     final rc =
                         delta?['reasoning_content'] ?? delta?['reasoning'];
@@ -3318,6 +3354,34 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                         totalTokens: 0,
                         usage: usage,
                       );
+                    }
+                    if (message != null && message['content'] != null) {
+                      final mc = message['content'];
+                      if (mc is String && mc.isNotEmpty) {
+                        contentAccum += mc;
+                        yield ChatStreamChunk(
+                          content: mc,
+                          isDone: false,
+                          totalTokens: 0,
+                          usage: usage,
+                        );
+                      }
+                    }
+                    if (message != null) {
+                      final rcMsg =
+                          message['reasoning_content'] ?? message['reasoning'];
+                      if (rcMsg is String &&
+                          rcMsg.isNotEmpty &&
+                          needsReasoningEcho) {
+                        reasoningAccum += rcMsg;
+                        yield ChatStreamChunk(
+                          content: '',
+                          reasoning: rcMsg,
+                          isDone: false,
+                          totalTokens: 0,
+                          usage: usage,
+                        );
+                      }
                     }
                     if (wantsImageOutput) {
                       final List<dynamic> imageItems = <dynamic>[];
@@ -3392,7 +3456,6 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     }
 
                     // Fallback/merge: message.content in same chunk (if any)
-                    final message = c0['message'] as Map?;
                     if (message != null && message['content'] != null) {
                       final mc = message['content'];
                       if (mc is String && mc.isNotEmpty) {
@@ -3524,6 +3587,14 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 reasoningDetails: preserveReasoningDetails
                     ? reasoningDetailsAccum
                     : null,
+              );
+              _logReasoningEchoDebug(
+                branch: 'stream_finish_non_tool_reason_loop',
+                upstreamModelId: upstreamModelId,
+                host: host,
+                needsReasoningEcho: needsReasoningEcho,
+                reasoningContent: needsReasoningEcho ? reasoningAccum : null,
+                calls: calls2,
               );
               currentMessages = [
                 ...currentMessages,
@@ -3762,22 +3833,11 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                   body2.remove('reasoning_effort');
                 } else if (host.contains('deepseek') ||
                     upstreamModelId.toLowerCase().contains('deepseek')) {
-                  if (isReasoning) {
-                    if (off) {
-                      body2['reasoning_content'] = false;
-                      body2.remove('reasoning_budget');
-                    } else {
-                      body2['reasoning_content'] = true;
-                      if (thinkingBudget != null && thinkingBudget > 0) {
-                        body2['reasoning_budget'] = thinkingBudget;
-                      } else {
-                        body2.remove('reasoning_budget');
-                      }
-                    }
-                  } else {
-                    body2.remove('reasoning_content');
-                    body2.remove('reasoning_budget');
-                  }
+                  _applyDeepSeekThinkingBody(
+                    body2,
+                    isReasoning: isReasoning,
+                    thinkingBudget: thinkingBudget,
+                  );
                 }
                 _applyCompatibleBuiltInSearch(
                   body2,
@@ -3856,9 +3916,13 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                         final c0 = (o['choices'] as List).first;
                         finishReason2 = c0['finish_reason'] as String?;
                         final delta = c0['delta'] as Map?;
+                        final message = c0['message'] as Map?;
                         final txt = _extractOpenAICompatibleDeltaText(delta);
                         final rc =
                             delta?['reasoning_content'] ?? delta?['reasoning'];
+                        final rcMsg =
+                            message?['reasoning_content'] ??
+                            message?['reasoning'];
                         final u = o['usage'];
                         if (u != null) {
                           final prompt = (u['prompt_tokens'] ?? 0) as int;
@@ -3896,6 +3960,32 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                             totalTokens: 0,
                             usage: usage,
                           );
+                        }
+                        if (message != null && message['content'] != null) {
+                          final mc = message['content'];
+                          if (mc is String && mc.isNotEmpty) {
+                            contentAccum += mc;
+                            yield ChatStreamChunk(
+                              content: mc,
+                              isDone: false,
+                              totalTokens: 0,
+                              usage: usage,
+                            );
+                          }
+                        }
+                        if (message != null) {
+                          if (rcMsg is String &&
+                              rcMsg.isNotEmpty &&
+                              needsReasoningEcho) {
+                            reasoningAccum += rcMsg;
+                            yield ChatStreamChunk(
+                              content: '',
+                              reasoning: rcMsg,
+                              isDone: false,
+                              totalTokens: 0,
+                              usage: usage,
+                            );
+                          }
                         }
                         if (wantsImageOutput) {
                           final List<dynamic> imageItems = <dynamic>[];
@@ -3970,7 +4060,6 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                         }
 
                         // Fallback/merge: message.content in same chunk (if any)
-                        final message = c0['message'] as Map?;
                         if (message != null && message['content'] != null) {
                           final mc = message['content'];
                           if (mc is String && mc.isNotEmpty) {
@@ -4106,6 +4195,16 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     reasoningDetails: preserveReasoningDetails
                         ? reasoningDetailsAccum
                         : null,
+                  );
+                  _logReasoningEchoDebug(
+                    branch: 'stream_done_fallback_loop',
+                    upstreamModelId: upstreamModelId,
+                    host: host,
+                    needsReasoningEcho: needsReasoningEcho,
+                    reasoningContent: needsReasoningEcho
+                        ? reasoningAccum
+                        : null,
+                    calls: calls2,
                   );
                   currentMessages = [
                     ...currentMessages,

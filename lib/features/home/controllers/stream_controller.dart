@@ -445,6 +445,26 @@ class StreamController {
     return out;
   }
 
+  int _nextToolBatchIndex(List<Map<String, dynamic>> events) {
+    var maxIndex = -1;
+    for (final event in events) {
+      final raw = event['tool_batch_index'];
+      if (raw is int && raw > maxIndex) {
+        maxIndex = raw;
+      }
+    }
+    return maxIndex + 1;
+  }
+
+  String _currentToolAssistantContent(StreamingState state) {
+    final full = state.fullContentRaw;
+    if (full.isEmpty) return '';
+    final offsets = state.contentSplitOffsets;
+    final start = offsets.isNotEmpty ? offsets.last.clamp(0, full.length) : 0;
+    if (start >= full.length) return '';
+    return full.substring(start).trim();
+  }
+
   // ============================================================================
   // Stream Throttling
   // ============================================================================
@@ -778,6 +798,11 @@ class StreamController {
     // Persist tool events
     try {
       final prev = getToolEventsFromDb(messageId);
+      final batchIndex = _nextToolBatchIndex(prev);
+      final assistantContent = _currentToolAssistantContent(state);
+      final assistantReasoningContent = segments.isNotEmpty
+          ? segments.last.text.trim()
+          : '';
       final newEvents = <Map<String, dynamic>>[
         ...prev,
         for (final c in chunk.toolCalls!)
@@ -786,6 +811,9 @@ class StreamController {
             'name': c.name,
             'arguments': c.arguments,
             'content': null,
+            'tool_batch_index': batchIndex,
+            'assistant_content': assistantContent,
+            'assistant_reasoning_content': assistantReasoningContent,
           },
       ];
       await setToolEventsInDb(messageId, dedupeToolEvents(newEvents));

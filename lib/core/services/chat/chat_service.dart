@@ -808,7 +808,11 @@ class ChatService extends ChangeNotifier {
       );
     }
 
+    final existingRecord = idx >= 0
+        ? Map<String, dynamic>.from(list[idx])
+        : <String, dynamic>{};
     final record = <String, dynamic>{
+      ...existingRecord,
       'id': cleanId,
       'name': name,
       'arguments': arguments,
