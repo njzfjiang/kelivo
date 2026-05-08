@@ -147,4 +147,23 @@ void main() {
       });
     },
   );
+
+  test('document extraction failure sentinels are not treated as content', () {
+    expect(
+      MessageBuilderService.isDocumentExtractionFailureText(
+        '[PDF] Unable to extract text from file.',
+      ),
+      isTrue,
+    );
+    expect(
+      MessageBuilderService.isDocumentExtractionFailureText(
+        '[[Failed to read PDF: unsupported]]',
+      ),
+      isTrue,
+    );
+    expect(
+      MessageBuilderService.isDocumentExtractionFailureText('CREATE TABLE x;'),
+      isFalse,
+    );
+  });
 }

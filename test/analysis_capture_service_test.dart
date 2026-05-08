@@ -42,6 +42,7 @@ void main() {
     final ctx = await service.prepareTurn(
       assistantMessage: assistantMessage,
       assistantId: 'assistant-a',
+      conversationTitle: 'Schema Notes',
       providerKey: 'OpenAI',
       modelId: 'gpt-4.1',
       stream: true,
@@ -107,6 +108,11 @@ void main() {
       ctx.extraBody![kelivoAnalysisMetaBodyKey],
       isA<Map<String, dynamic>>(),
     );
+    expect(
+      (ctx.extraBody![kelivoAnalysisMetaBodyKey]
+          as Map<String, dynamic>)['conversation_title'],
+      'Schema Notes',
+    );
   });
 
   test('turn status updates cover completed, error and cancelled', () async {
@@ -120,6 +126,7 @@ void main() {
     await service.prepareTurn(
       assistantMessage: assistantMessage,
       assistantId: null,
+      conversationTitle: null,
       providerKey: 'OpenAI',
       modelId: 'gpt-4.1',
       stream: true,

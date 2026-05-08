@@ -567,6 +567,7 @@ Stream<ChatStreamChunk> _sendGoogleVertexClaudeStream({
         if (line.isEmpty || !line.startsWith('data:')) continue;
 
         final data = line.substring(5).trimLeft();
+        if (data.isEmpty) continue;
         try {
           final obj = jsonDecode(data);
           final type = obj['type'];

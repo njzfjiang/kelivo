@@ -147,14 +147,16 @@ class MessageGenerationService {
     );
     final includeOpenAIToolMessages = kind == ProviderKind.openai;
 
-    onFileProcessingStarted?.call();
-
     // Build API messages
     final apiMessages = messageBuilderService.buildApiMessages(
       messages: messages,
       versionSelections: versionSelections,
       currentConversation: currentConversation,
       includeOpenAIToolMessages: includeOpenAIToolMessages,
+    );
+    final showFileProcessing = _lastUserMessageNeedsFileProcessing(
+      apiMessages,
+      settings,
     );
 
     // Apply assistant replace-only regexes at send-time (visual stays unchanged).
@@ -173,12 +175,15 @@ class MessageGenerationService {
       }
     }
 
-    // Process user messages (documents, OCR, templates)
-    final lastUserImagePaths = await messageBuilderService
-        .processUserMessagesForApi(apiMessages, settings, assistant);
-
-    // Signal processing finished
-    onFileProcessingFinished?.call();
+    if (showFileProcessing) onFileProcessingStarted?.call();
+    late final List<String> lastUserImagePaths;
+    try {
+      // Process user messages (documents, OCR, templates)
+      lastUserImagePaths = await messageBuilderService
+          .processUserMessagesForApi(apiMessages, settings, assistant);
+    } finally {
+      if (showFileProcessing) onFileProcessingFinished?.call();
+    }
 
     // Inject prompts
     final systemPrompt = messageBuilderService.injectSystemPrompt(
@@ -255,6 +260,27 @@ class MessageGenerationService {
       searchPrompt: searchPrompt,
       contextLimit: contextLimit,
     );
+  }
+
+  bool _lastUserMessageNeedsFileProcessing(
+    List<Map<String, dynamic>> apiMessages,
+    SettingsProvider settings,
+  ) {
+    for (int i = apiMessages.length - 1; i >= 0; i--) {
+      final message = apiMessages[i];
+      if ((message['role'] ?? '').toString() != 'user') continue;
+      final parsed = messageBuilderService.parseInputFromRaw(
+        (message['content'] ?? '').toString(),
+      );
+      if (parsed.documents.isNotEmpty) return true;
+      final ocrActive =
+          settings.ocrEnabled &&
+          settings.ocrModelProvider != null &&
+          settings.ocrModelId != null;
+      if (ocrActive && parsed.imagePaths.isNotEmpty) return true;
+      return false;
+    }
+    return false;
   }
 
   /// Create user message from input data.
@@ -341,6 +367,9 @@ class MessageGenerationService {
     final analysisTurn = await analysisCaptureService.prepareTurn(
       assistantMessage: assistantMessage,
       assistantId: assistant?.id,
+      conversationTitle: currentConversationTitle(
+        assistantMessage.conversationId,
+      ),
       providerKey: providerKey,
       modelId: modelId,
       stream: assistant?.streamOutput ?? true,
@@ -385,6 +414,11 @@ class MessageGenerationService {
 
   String? currentConversationSummary(String conversationId) {
     return chatService.getConversation(conversationId)?.summary;
+  }
+
+  String? currentConversationTitle(String conversationId) {
+    final title = chatService.getConversation(conversationId)?.title.trim();
+    return title == null || title.isEmpty ? null : title;
   }
 
   /// Get current model and provider from assistant or global settings.

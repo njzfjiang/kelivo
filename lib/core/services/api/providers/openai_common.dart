@@ -1531,6 +1531,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
       if (line.isEmpty || !line.startsWith('data:')) continue;
 
       final data = line.substring(5).trimLeft();
+      if (data.isEmpty) continue;
       if (data == '[DONE]') {
         // If model streamed tool_calls but didn't include finish_reason on prior chunks,
         // execute tool flow now and start follow-up request.
@@ -1824,6 +1825,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 final l = lines2[j].trim();
                 if (l.isEmpty || !l.startsWith('data:')) continue;
                 final d = l.substring(5).trimLeft();
+                if (d.isEmpty) continue;
                 if (d == '[DONE]') {
                   // This round finished; handle below
                   continue;
@@ -2515,6 +2517,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     final l = lines2[j].trim();
                     if (l.isEmpty || !l.startsWith('data:')) continue;
                     final d = l.substring(5).trimLeft();
+                    if (d.isEmpty) continue;
                     if (d == '[DONE]') continue;
                     try {
                       final o = jsonDecode(d);
@@ -3278,6 +3281,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                 final l = lines2[j].trim();
                 if (l.isEmpty || !l.startsWith('data:')) continue;
                 final d = l.substring(5).trimLeft();
+                if (d.isEmpty) continue;
                 if (d == '[DONE]') {
                   continue;
                 }
@@ -3905,6 +3909,7 @@ Stream<ChatStreamChunk> _sendOpenAIStream(
                     final l = lines2[j].trim();
                     if (l.isEmpty || !l.startsWith('data:')) continue;
                     final d = l.substring(5).trimLeft();
+                    if (d.isEmpty) continue;
                     if (d == '[DONE]') {
                       continue;
                     }

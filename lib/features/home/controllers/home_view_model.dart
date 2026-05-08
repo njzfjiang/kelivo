@@ -278,10 +278,6 @@ class HomeViewModel extends ChangeNotifier {
 
     _chatActions.onScheduleImageSanitize = onScheduleImageSanitize;
 
-    if (input.documents.isNotEmpty) {
-      isProcessingFiles.value = true;
-    }
-
     onHapticFeedback?.call();
     onScrollToBottom?.call();
 

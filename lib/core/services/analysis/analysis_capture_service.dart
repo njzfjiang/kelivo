@@ -31,6 +31,7 @@ class AnalysisCaptureService {
   Future<AnalysisTurnContext> prepareTurn({
     required ChatMessage assistantMessage,
     required String? assistantId,
+    required String? conversationTitle,
     required String providerKey,
     required String modelId,
     required bool stream,
@@ -103,6 +104,7 @@ class AnalysisCaptureService {
     final metadata = <String, dynamic>{
       'turn_id': turnId,
       'session_id': sessionId,
+      'conversation_title': conversationTitle,
       'seq': seq,
       'assistant_id': assistantId,
       'provider_key': providerKey,

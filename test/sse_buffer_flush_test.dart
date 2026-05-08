@@ -132,5 +132,50 @@ void main() {
       expect(fullContent, contains(' response'));
       expect(chunks.last.isDone, isTrue);
     });
+
+    test('empty SSE data lines are ignored as keepalive events', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() async {
+        await server.close(force: true);
+      });
+
+      server.listen((request) {
+        request.response.statusCode = 200;
+        request.response.headers
+          ..contentType = ContentType('text', 'event-stream')
+          ..set('Transfer-Encoding', 'chunked');
+
+        final chunk = jsonEncode({
+          'choices': [
+            {
+              'delta': {'content': 'Still here'},
+              'finish_reason': 'stop',
+            },
+          ],
+        });
+
+        request.response.write('data:\n\n');
+        request.response.write('data:   \n\n');
+        request.response.write('data: $chunk\n\n');
+        request.response.write('data: [DONE]');
+        request.response.close();
+      });
+
+      final config = _testConfig('http://localhost:${server.port}/v1');
+      final chunks = <ChatStreamChunk>[];
+
+      await for (final c in ChatApiService.sendMessageStream(
+        config: config,
+        modelId: 'test-model',
+        messages: [
+          {'role': 'user', 'content': 'hi'},
+        ],
+      )) {
+        chunks.add(c);
+      }
+
+      expect(chunks.map((c) => c.content).join(), contains('Still here'));
+      expect(chunks.last.isDone, isTrue);
+    });
   });
 }

@@ -492,6 +492,15 @@ class MessageBuilderService {
     return resolveDocumentAttachmentMime(attachment);
   }
 
+  @visibleForTesting
+  static bool isDocumentExtractionFailureText(String? text) {
+    final normalized = (text ?? '').trim();
+    if (normalized.isEmpty) return true;
+    return normalized == '[PDF] Unable to extract text from file.' ||
+        normalized.startsWith('[[') ||
+        normalized.startsWith('[DOCX]');
+  }
+
   /// Process user messages in apiMessages: extract documents, apply OCR, inject file prompts.
   ///
   /// Returns the image paths from the last user message (for API call).
@@ -537,15 +546,18 @@ class MessageBuilderService {
           path: d.path,
           mime: d.mime,
         );
+        final extractedText = isDocumentExtractionFailureText(text)
+            ? null
+            : text;
         // Cache only when stat is available; otherwise avoid staleness.
         if (stat != null) {
           _docTextCache[d.path] = _DocTextCacheEntry(
-            text: text,
+            text: extractedText,
             modifiedMs: stat.modified.millisecondsSinceEpoch,
             size: stat.size,
           );
         }
-        return text;
+        return extractedText;
       } catch (_) {
         if (stat != null) {
           _docTextCache[d.path] = _DocTextCacheEntry(

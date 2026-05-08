@@ -18,6 +18,7 @@ Update the rolling summary so the assistant can continue the current work after 
 只输出四段：Now / Key context / Protocols / Next。
 优先保留：当前状态（HP/身体/情绪）、最关键的协议护栏、下一步最小动作。
 写得具体、短、稳定，不要引入新观点。
+少用“用户”，多用“Mei / 小猫”；把“助手”适度换成“我 / Kai / 狐狸”；
 
 Requirements:
 1. Use the same language as the conversation
